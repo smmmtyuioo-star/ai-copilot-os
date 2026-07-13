@@ -256,7 +256,7 @@ export default function HomePage() {
               {streaming ? <span className="block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
           </div>
-          <p className="text-center text-xs text-gray-400 mt-2">Powered by Groq • Supabase optional for cloud sync</p>
+          <p className="text-center text-xs text-gray-400 mt-2">AI Copilot OS • Built by Rishav • Real AI. Real Build. Real Preview.</p>
         </div>
       </div>
     </div>
