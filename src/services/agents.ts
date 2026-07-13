@@ -1,12 +1,7 @@
 import { getSupabase } from '@/database/client'
+import { localStore, hasSupabase } from '@/lib/storage'
 import type { Agent, AgentRole } from '@/types'
 import { generateId, parseError } from '@/lib/utils'
-
-function getClient() {
-  const c = getSupabase()
-  if (!c) throw new Error('Supabase client not available. Check your environment variables.')
-  return c
-}
 
 const AGENT_DEFAULTS: Record<AgentRole, { name: string; prompt: string; tools: string[] }> = {
   'request-analyzer': {
@@ -65,44 +60,52 @@ export function getAgentDefaults(role: AgentRole) {
   return AGENT_DEFAULTS[role]
 }
 
-export async function createAgent(
-  userId: string,
-  role: AgentRole,
-  model?: string,
-): Promise<Agent> {
-  const supabase = getClient()
+export async function createAgent(userId: string, role: AgentRole, model?: string): Promise<Agent> {
   const defaults = AGENT_DEFAULTS[role]
   const agent: Agent = {
     id: generateId(),
     user_id: userId,
     name: defaults.name,
     role,
-    model: model || 'gpt-4o',
+    model: model || 'llama-3.3-70b-versatile',
     system_prompt: defaults.prompt,
     tools: defaults.tools,
     status: 'idle',
     created_at: new Date().toISOString(),
   }
-  const { error } = await supabase.from('agents').insert(agent)
-  if (error) throw new Error(error.message)
+  if (hasSupabase) {
+    const supabase = getSupabase()
+    if (supabase) {
+      const { error } = await supabase.from('agents').insert(agent)
+      if (error) throw new Error(error.message)
+      return agent
+    }
+  }
+  localStore.agents.add({ id: agent.id, name: agent.name, role: agent.role, model: agent.model, systemPrompt: agent.system_prompt, tools: agent.tools })
   return agent
 }
 
 export async function getAgents(userId: string): Promise<Agent[]> {
-  const supabase = getClient()
-  const { data, error } = await supabase
-    .from('agents')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true })
-  if (error) throw new Error(error.message)
-  return data || []
+  if (hasSupabase) {
+    const supabase = getSupabase()
+    if (supabase) {
+      const { data, error } = await supabase.from('agents').select('*').eq('user_id', userId).order('created_at', { ascending: true })
+      if (!error && data) return data
+    }
+  }
+  return localStore.agents.items.map(a => ({
+    id: a.id, user_id: userId, name: a.name, role: a.role as AgentRole,
+    model: a.model, system_prompt: a.systemPrompt, tools: a.tools,
+    status: 'idle' as const, created_at: '',
+  }))
 }
 
 export async function deleteAgent(id: string): Promise<void> {
-  const supabase = getClient()
-  const { error } = await supabase.from('agents').delete().eq('id', id)
-  if (error) throw new Error(error.message)
+  if (hasSupabase) {
+    const supabase = getSupabase()
+    if (supabase) { await supabase.from('agents').delete().eq('id', id); return }
+  }
+  localStore.agents.remove(id)
 }
 
 export async function executeAgentPipeline(
@@ -111,7 +114,6 @@ export async function executeAgentPipeline(
   onStatus?: (agent: string, status: string) => void,
 ): Promise<{ success: boolean; output?: string; error?: string }> {
   try {
-    const supabase = getClient()
     const agents = await getAgents(userId)
     if (agents.length === 0) {
       return { success: false, error: 'No agents configured. Create agents first.' }
@@ -120,26 +122,20 @@ export async function executeAgentPipeline(
     let currentRequest = request
     for (const agent of agents) {
       onStatus?.(agent.name, 'running')
-      await supabase.from('agents').update({ status: 'running' }).eq('id', agent.id)
 
       const response = await fetch('/api/ai/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent,
-          request: currentRequest,
-        }),
+        body: JSON.stringify({ agent, request: currentRequest }),
       })
 
       if (!response.ok) {
-        await supabase.from('agents').update({ status: 'error' }).eq('id', agent.id)
         onStatus?.(agent.name, 'error')
         return { success: false, error: `Agent ${agent.name} failed` }
       }
 
       const result = await response.json()
       currentRequest = result.output || currentRequest
-      await supabase.from('agents').update({ status: 'idle' }).eq('id', agent.id)
       onStatus?.(agent.name, 'completed')
     }
 

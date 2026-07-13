@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Key, Trash2, Copy, Eye, EyeOff } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Modal } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
+import { localStore, hasSupabase } from '@/lib/storage'
 import { getSupabase } from '@/database/client'
 import type { ApiKey } from '@/types'
 import { formatDate, generateId } from '@/lib/utils'
@@ -22,45 +23,50 @@ export default function ApiCenterPage() {
 
   async function load() {
     if (!user) return
-    const supabase = getSupabase()
-    if (!supabase) return
-    const { data } = await supabase.from('api_keys').select('*').eq('user_id', user.id)
-    setKeys(data || [])
+    if (hasSupabase) {
+      const supabase = getSupabase()
+      if (supabase) {
+        const { data } = await supabase.from('api_keys').select('*').eq('user_id', user.id)
+        if (data) { setKeys(data); return }
+      }
+    }
+    setKeys(localStore.apiKeys.items.map(k => ({
+      id: k.id, user_id: user.id, name: k.name, key: k.key,
+      permissions: k.permissions, created_at: k.createdAt,
+    })))
   }
 
   async function handleCreate() {
     if (!user || !keyName.trim()) return
     const apiKey: ApiKey = {
-      id: generateId(),
-      user_id: user.id,
-      name: keyName,
+      id: generateId(), user_id: user.id, name: keyName,
       key: `aco_${generateId().replace(/-/g, '')}_${generateId().replace(/-/g, '')}`,
-      permissions: selectedPerms,
-      created_at: new Date().toISOString(),
+      permissions: selectedPerms, created_at: new Date().toISOString(),
     }
-    const supabase = getSupabase()
-    if (!supabase) return
-    const { error } = await supabase.from('api_keys').insert(apiKey)
-    if (!error) {
-      setKeys(prev => [...prev, apiKey])
-      setShowCreate(false)
-      setKeyName('')
+    if (hasSupabase) {
+      const supabase = getSupabase()
+      if (supabase) {
+        const { error } = await supabase.from('api_keys').insert(apiKey)
+        if (!error) { setKeys(prev => [...prev, apiKey]); setShowCreate(false); setKeyName(''); return }
+      }
     }
+    localStore.apiKeys.add({ id: apiKey.id, name: keyName, key: apiKey.key, permissions: selectedPerms, createdAt: apiKey.created_at })
+    setKeys(prev => [...prev, apiKey])
+    setShowCreate(false)
+    setKeyName('')
   }
 
   async function handleDelete(id: string) {
-    const supabase = getSupabase()
-    if (supabase) await supabase.from('api_keys').delete().eq('id', id)
+    if (hasSupabase) {
+      const supabase = getSupabase()
+      if (supabase) await supabase.from('api_keys').delete().eq('id', id)
+    }
+    localStore.apiKeys.remove(id)
     setKeys(prev => prev.filter(k => k.id !== id))
   }
 
   function toggleVisible(id: string) {
-    setVisibleKeys(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    setVisibleKeys(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
   }
 
   async function copyKey(key: string, id: string) {
@@ -70,9 +76,7 @@ export default function ApiCenterPage() {
   }
 
   function togglePermission(perm: string) {
-    setSelectedPerms(prev =>
-      prev.includes(perm) ? prev.filter(p => p !== perm) : [...prev, perm],
-    )
+    setSelectedPerms(prev => prev.includes(perm) ? prev.filter(p => p !== perm) : [...prev, perm])
   }
 
   return (
@@ -141,17 +145,8 @@ export default function ApiCenterPage() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Permissions</label>
             <div className="flex flex-wrap gap-2">
               {PERMISSIONS.map(p => (
-                <button
-                  key={p}
-                  onClick={() => togglePermission(p)}
-                  className={`rounded-lg border px-3 py-1 text-xs font-medium ${
-                    selectedPerms.includes(p)
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200'
-                      : 'border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400'
-                  }`}
-                >
-                  {p}
-                </button>
+                <button key={p} onClick={() => togglePermission(p)}
+                  className={`rounded-lg border px-3 py-1 text-xs font-medium ${selectedPerms.includes(p) ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200' : 'border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400'}`}>{p}</button>
               ))}
             </div>
           </div>

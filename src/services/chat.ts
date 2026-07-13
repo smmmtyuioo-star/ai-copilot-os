@@ -1,75 +1,85 @@
 import { getSupabase } from '@/database/client'
+import { localStore, hasSupabase } from '@/lib/storage'
 import type { Conversation, Message } from '@/types'
 import { parseError, generateId } from '@/lib/utils'
 
-function getClient() {
-  const c = getSupabase()
-  if (!c) throw new Error('Supabase client not available. Check your environment variables.')
-  return c
-}
-
 export async function createConversation(userId: string, title: string, model?: string): Promise<Conversation> {
-  const supabase = getClient()
   const conversation: Conversation = {
-    id: generateId(),
-    user_id: userId,
-    title,
-    model: model || 'gpt-4o',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    id: generateId(), user_id: userId, title,
+    model: model || 'llama-3.3-70b-versatile',
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   }
-  const { error } = await supabase.from('conversations').insert(conversation)
-  if (error) throw new Error(error.message)
+  if (hasSupabase) {
+    const supabase = getSupabase()
+    if (supabase) {
+      const { error } = await supabase.from('conversations').insert(conversation)
+      if (error) throw new Error(error.message)
+      return conversation
+    }
+  }
+  localStore.conversations.add({ id: conversation.id, title: conversation.title, model: conversation.model, createdAt: conversation.created_at })
   return conversation
 }
 
 export async function getConversations(userId: string): Promise<Conversation[]> {
-  const supabase = getClient()
-  const { data, error } = await supabase
-    .from('conversations')
-    .select('*')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false })
-  if (error) throw new Error(error.message)
-  return data || []
+  if (hasSupabase) {
+    const supabase = getSupabase()
+    if (supabase) {
+      const { data, error } = await supabase.from('conversations').select('*').eq('user_id', userId).order('updated_at', { ascending: false })
+      if (!error && data) return data
+    }
+  }
+  return localStore.conversations.items.map(c => ({
+    id: c.id, user_id: userId, title: c.title, model: c.model,
+    created_at: c.createdAt, updated_at: c.createdAt,
+  }))
 }
 
 export async function getConversation(id: string): Promise<Conversation | null> {
-  const supabase = getClient()
-  const { data, error } = await supabase
-    .from('conversations')
-    .select('*')
-    .eq('id', id)
-    .single()
-  if (error) return null
-  return data
+  if (hasSupabase) {
+    const supabase = getSupabase()
+    if (supabase) {
+      const { data } = await supabase.from('conversations').select('*').eq('id', id).single()
+      if (data) return data
+    }
+  }
+  const c = localStore.conversations.getById(id)
+  if (!c) return null
+  return { id: c.id, user_id: 'local', title: c.title, model: c.model, created_at: c.createdAt, updated_at: c.createdAt }
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-  const supabase = getClient()
-  const { error } = await supabase.from('conversations').delete().eq('id', id)
-  if (error) throw new Error(error.message)
+  if (hasSupabase) {
+    const supabase = getSupabase()
+    if (supabase) { await supabase.from('conversations').delete().eq('id', id); return }
+  }
+  localStore.conversations.remove(id)
 }
 
 export async function getMessages(conversationId: string): Promise<Message[]> {
-  const supabase = getClient()
-  const { data, error } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true })
-  if (error) throw new Error(error.message)
-  return data || []
+  if (hasSupabase) {
+    const supabase = getSupabase()
+    if (supabase) {
+      const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true })
+      if (!error && data) return data
+    }
+  }
+  return localStore.messages.items
+    .filter(m => m.conversationId === conversationId)
+    .map(m => ({ id: m.id, conversation_id: m.conversationId, role: m.role as Message['role'], content: m.content, created_at: m.createdAt }))
 }
 
 export async function saveMessage(message: Omit<Message, 'created_at'>): Promise<Message> {
-  const supabase = getClient()
-  const msg: Message = {
-    ...message,
-    created_at: new Date().toISOString(),
+  const msg: Message = { ...message, created_at: new Date().toISOString() }
+  if (hasSupabase) {
+    const supabase = getSupabase()
+    if (supabase) {
+      const { error } = await supabase.from('messages').insert(msg)
+      if (error) throw new Error(error.message)
+      return msg
+    }
   }
-  const { error } = await supabase.from('messages').insert(msg)
-  if (error) throw new Error(error.message)
+  localStore.messages.add({ id: msg.id, conversationId: msg.conversation_id, role: msg.role, content: msg.content, createdAt: msg.created_at })
   return msg
 }
 
@@ -83,7 +93,7 @@ export async function streamAiResponse(
     const response = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, model: model || 'gpt-4o' }),
+      body: JSON.stringify({ messages, model: model || 'llama-3.3-70b-versatile' }),
     })
 
     if (!response.ok) {
@@ -116,9 +126,7 @@ export async function streamAiResponse(
             fullContent += content
             onToken?.(content)
           }
-        } catch {
-          // skip parse errors
-        }
+        } catch {}
       }
     }
 

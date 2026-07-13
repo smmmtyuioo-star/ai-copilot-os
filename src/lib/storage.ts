@@ -54,6 +54,9 @@ export const localStore = {
   messages: createStore<{ id: string; conversationId: string; role: string; content: string; createdAt: string }>('msgs'),
   agents: createStore<{ id: string; name: string; role: string; model: string; systemPrompt: string; tools: string[] }>('agents'),
   memories: createStore<{ id: string; content: string; type: string; createdAt: string }>('mem'),
+  workflows: createStore<{ id: string; name: string; description: string; status: string; nodes: string; triggers: string; createdAt: string; updatedAt: string }>('wf'),
+  apiKeys: createStore<{ id: string; name: string; key: string; permissions: string[]; createdAt: string }>('apikeys'),
+  mcpEndpoints: createStore<{ id: string; name: string; url: string; protocol: string; status: string; createdAt: string }>('mcp'),
 }
 
 export { hasSupabase }

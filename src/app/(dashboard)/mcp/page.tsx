@@ -1,8 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Plus, Network, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { Plus, Network, Trash2, Wifi, WifiOff, Loader2, CheckCircle2, AlertCircle, Play } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Modal } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
+import { localStore, hasSupabase } from '@/lib/storage'
 import { getSupabase } from '@/database/client'
 import type { MCPEndpoint } from '@/types'
 import { formatDate, generateId } from '@/lib/utils'
@@ -14,43 +15,82 @@ export default function MCPPage() {
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
   const [protocol, setProtocol] = useState('http')
+  const [testing, setTesting] = useState<string | null>(null)
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>({})
 
   useEffect(() => { if (user) load() }, [user])
 
   async function load() {
     if (!user) return
-    const supabase = getSupabase()
-    if (!supabase) return
-    const { data } = await supabase.from('mcp_endpoints').select('*').eq('user_id', user.id)
-    setEndpoints(data || [])
+    if (hasSupabase) {
+      const supabase = getSupabase()
+      if (supabase) {
+        const { data } = await supabase.from('mcp_endpoints').select('*').eq('user_id', user.id)
+        if (data) { setEndpoints(data); return }
+      }
+    }
+    setEndpoints(localStore.mcpEndpoints.items.map(e => ({
+      id: e.id, user_id: user.id, name: e.name, url: e.url,
+      protocol: e.protocol, status: e.status as MCPEndpoint['status'], created_at: e.createdAt,
+    })))
   }
 
   async function handleCreate() {
     if (!user || !name.trim() || !url.trim()) return
     const endpoint: MCPEndpoint = {
-      id: generateId(),
-      user_id: user.id,
-      name,
-      url,
-      protocol,
-      status: 'inactive',
-      created_at: new Date().toISOString(),
+      id: generateId(), user_id: user.id, name, url, protocol,
+      status: 'inactive', created_at: new Date().toISOString(),
     }
-    const supabase = getSupabase()
-    if (!supabase) return
-    const { error } = await supabase.from('mcp_endpoints').insert(endpoint)
-    if (!error) {
-      setEndpoints(prev => [...prev, endpoint])
-      setShowCreate(false)
-      setName('')
-      setUrl('')
+    if (hasSupabase) {
+      const supabase = getSupabase()
+      if (supabase) {
+        const { error } = await supabase.from('mcp_endpoints').insert(endpoint)
+        if (!error) { setEndpoints(prev => [...prev, endpoint]); setShowCreate(false); setName(''); setUrl(''); return }
+      }
     }
+    localStore.mcpEndpoints.add({ id: endpoint.id, name, url, protocol, status: 'inactive', createdAt: endpoint.created_at })
+    setEndpoints(prev => [...prev, endpoint])
+    setShowCreate(false)
+    setName('')
+    setUrl('')
   }
 
   async function handleDelete(id: string) {
-    const supabase = getSupabase()
-    if (supabase) await supabase.from('mcp_endpoints').delete().eq('id', id)
+    if (hasSupabase) {
+      const supabase = getSupabase()
+      if (supabase) await supabase.from('mcp_endpoints').delete().eq('id', id)
+    }
+    localStore.mcpEndpoints.remove(id)
     setEndpoints(prev => prev.filter(e => e.id !== id))
+  }
+
+  async function testConnection(id: string) {
+    setTesting(id)
+    const ep = endpoints.find(e => e.id === id)
+    if (!ep) return
+
+    try {
+      const fullUrl = `${ep.protocol}://${ep.url}`
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
+
+      const response = await fetch('/api/browser/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: fullUrl }),
+        signal: controller.signal,
+      })
+      clearTimeout(timeout)
+
+      if (response.ok) {
+        setTestResults(prev => ({ ...prev, [id]: { ok: true, message: 'Connected successfully' } }))
+      } else {
+        setTestResults(prev => ({ ...prev, [id]: { ok: false, message: `HTTP ${response.status}: ${response.statusText}` } }))
+      }
+    } catch (err) {
+      setTestResults(prev => ({ ...prev, [id]: { ok: false, message: `Connection failed: ${err instanceof Error ? err.message : 'Unknown error'}` } }))
+    }
+    setTesting(null)
   }
 
   return (
@@ -85,9 +125,20 @@ export default function MCPPage() {
               </CardHeader>
               <CardContent>
                 <p className="mb-3 text-xs text-gray-500">Added {formatDate(ep.created_at)}</p>
-                <Button size="sm" variant="danger" onClick={() => handleDelete(ep.id)}>
-                  <Trash2 className="h-4 w-4" /> Remove
-                </Button>
+                {testResults[ep.id] && (
+                  <div className={`mb-2 flex items-center gap-1 text-xs ${testResults[ep.id].ok ? 'text-green-600' : 'text-red-600'}`}>
+                    {testResults[ep.id].ok ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
+                    {testResults[ep.id].message}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => testConnection(ep.id)} loading={testing === ep.id}>
+                    <Play className="h-4 w-4" /> Test Connection
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={() => handleDelete(ep.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -109,7 +160,6 @@ export default function MCPPage() {
             <select value={protocol} onChange={e => setProtocol(e.target.value)} className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700">
               <option value="http">HTTP</option>
               <option value="https">HTTPS</option>
-              <option value="grpc">gRPC</option>
             </select>
           </div>
           <Button onClick={handleCreate} className="w-full">Add Endpoint</Button>
