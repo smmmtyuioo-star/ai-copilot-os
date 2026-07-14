@@ -2,35 +2,59 @@ import { NextRequest, NextResponse } from 'next/server'
 import { env } from '@/config/env'
 
 const PROVIDERS: Record<string, { baseUrl: string; key: () => string; envVar: string; models: string[] }> = {
-  omniroute: {
-    baseUrl: 'https://api.omniroute.online/v1',
-    key: () => env.ai.omnirouteKey,
-    envVar: 'OMNIROUTE_API_KEY',
-    models: [
-      'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-preview', 'o1-mini',
-      'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229',
-      'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it',
-      'llama-3.3-70b-cerebras', 'llama-3.1-70b-cerebras',
-      'accounts/fireworks/models/llama-v3p3-70b-instruct', 'accounts/fireworks/models/llama-v3p1-70b-instruct',
-      'deepseek-chat', 'deepseek-coder',
-      'mistral-large', 'mistral-medium', 'mistral-small',
-      'qwen-2.5-72b', 'qwen-2.5-32b',
-      'command-r-plus', 'command-r',
-    ],
-  },
   groq: {
     baseUrl: 'https://api.groq.com/openai/v1',
     key: () => env.ai.groqKey,
     envVar: 'GROQ_API_KEY',
     models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
   },
+  cerebras: {
+    baseUrl: 'https://api.cerebras.ai/v1',
+    key: () => env.ai.cerebrasKey,
+    envVar: 'CEREBRAS_API_KEY',
+    models: ['llama-3.3-70b', 'llama-3.1-70b'],
+  },
+  fireworks: {
+    baseUrl: 'https://api.fireworks.ai/inference/v1',
+    key: () => env.ai.fireworksKey,
+    envVar: 'FIREWORKS_API_KEY',
+    models: ['accounts/fireworks/models/llama-v3p3-70b-instruct', 'accounts/fireworks/models/llama-v3p1-70b-instruct'],
+  },
+  deepseek: {
+    baseUrl: 'https://api.deepseek.com/v1',
+    key: () => env.ai.deepseekKey,
+    envVar: 'DEEPSEEK_API_KEY',
+    models: ['deepseek-chat', 'deepseek-coder'],
+  },
+  mistral: {
+    baseUrl: 'https://api.mistral.ai/v1',
+    key: () => env.ai.mistralKey,
+    envVar: 'MISTRAL_API_KEY',
+    models: ['mistral-large', 'mistral-medium', 'mistral-small'],
+  },
+  openrouter: {
+    baseUrl: 'https://openrouter.ai/api/v1',
+    key: () => env.ai.openrouterKey,
+    envVar: 'OPENROUTER_API_KEY',
+    models: ['openai/gpt-4o', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct', 'google/gemini-pro'],
+  },
+  cloudflare: {
+    baseUrl: `https://api.cloudflare.com/client/v4/accounts/${env.ai.cloudflareAccountId}/ai/run`,
+    key: () => env.ai.cloudflareApiToken,
+    envVar: 'CLOUDFLARE_API_TOKEN',
+    models: ['@cf/meta/llama-3.3-70b-instruct', '@cf/meta/llama-3.1-8b-instruct', '@cf/mistral/mistral-7b-instruct-v0.1', '@cf/deepseek/deepseek-r1-distill-qwen-32b'],
+  },
 }
 
 function detectProvider(model: string): string | null {
-  if (env.ai.omnirouteKey) return 'omniroute'
-  if (model.startsWith('gpt-')) return 'openai'
-  if (model.startsWith('claude-')) return 'anthropic'
+  if (env.ai.groqKey) return 'groq'
+  if (model.startsWith('gpt-')) return 'openrouter'
+  if (model.startsWith('claude-')) return 'openrouter'
   if (['llama-', 'mixtral-', 'gemma-'].some(p => model.startsWith(p))) return 'groq'
+  if (model.startsWith('deepseek-')) return 'deepseek'
+  if (model.startsWith('mistral-')) return 'mistral'
+  if (model.startsWith('accounts/')) return 'fireworks'
+  if (model.startsWith('@cf/')) return 'cloudflare'
   return null
 }
 
@@ -67,9 +91,9 @@ export async function POST(request: NextRequest) {
     }
 
     const modelToUse = model || env.ai.defaultModel
-    let providerName = explicitProvider || detectProvider(modelToUse) || (env.ai.omnirouteKey ? 'omniroute' : env.ai.defaultProvider)
+    let providerName = explicitProvider || detectProvider(modelToUse) || 'groq'
 
-    const fallbackChain = ['omniroute', 'groq']
+    const fallbackChain = ['groq', 'cerebras', 'fireworks', 'deepseek', 'mistral', 'openrouter', 'cloudflare']
     const startIndex = fallbackChain.indexOf(providerName)
     const providersToTry = fallbackChain.slice(startIndex >= 0 ? startIndex : 0)
 

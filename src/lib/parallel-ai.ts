@@ -1,50 +1,50 @@
 import { env } from '@/config/env'
 
 const PROVIDERS = {
-  omniroute: {
-    baseUrl: 'https://api.omniroute.online/v1',
-    models: [
-      'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-preview', 'o1-mini',
-      'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229',
-      'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it',
-      'llama-3.3-70b-cerebras', 'llama-3.1-70b-cerebras',
-      'accounts/fireworks/models/llama-v3p3-70b-instruct', 'accounts/fireworks/models/llama-v3p1-70b-instruct',
-      'deepseek-chat', 'deepseek-coder',
-      'mistral-large', 'mistral-medium', 'mistral-small',
-      'qwen-2.5-72b', 'qwen-2.5-32b',
-      'command-r-plus', 'command-r',
-    ],
-    key: () => env.ai.omnirouteKey,
-  },
   groq: {
     baseUrl: 'https://api.groq.com/openai/v1',
     models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
     key: () => env.ai.groqKey,
+    strengths: ['speed', 'reasoning', 'coding'],
   },
   cerebras: {
     baseUrl: 'https://api.cerebras.ai/v1',
     models: ['llama-3.3-70b', 'llama-3.1-70b'],
     key: () => env.ai.cerebrasKey,
+    strengths: ['speed', 'ultra-fast'],
   },
   fireworks: {
     baseUrl: 'https://api.fireworks.ai/inference/v1',
     models: ['accounts/fireworks/models/llama-v3p3-70b-instruct', 'accounts/fireworks/models/llama-v3p1-70b-instruct'],
     key: () => env.ai.fireworksKey,
+    strengths: ['speed', 'open-source'],
   },
   deepseek: {
     baseUrl: 'https://api.deepseek.com/v1',
     models: ['deepseek-chat', 'deepseek-coder'],
     key: () => env.ai.deepseekKey,
+    strengths: ['coding', 'reasoning', 'math'],
   },
   mistral: {
     baseUrl: 'https://api.mistral.ai/v1',
     models: ['mistral-large', 'mistral-medium', 'mistral-small'],
     key: () => env.ai.mistralKey,
+    strengths: ['reasoning', 'multilingual', 'function-calling'],
   },
   openrouter: {
     baseUrl: 'https://openrouter.ai/api/v1',
     models: ['openai/gpt-4o', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct', 'google/gemini-pro'],
     key: () => env.ai.openrouterKey,
+    strengths: ['gpt-4o', 'claude', 'variety'],
+  },
+  cloudflare: {
+    baseUrl: `https://api.cloudflare.com/client/v4/accounts/${env.ai.cloudflareAccountId}/ai/run`,
+    models: ['@cf/meta/llama-3.3-70b-instruct', '@cf/meta/llama-3.1-8b-instruct', '@cf/mistral/mistral-7b-instruct-v0.1', '@cf/deepseek/deepseek-r1-distill-qwen-32b'],
+    key: () => env.ai.cloudflareApiToken,
+    accountId: env.ai.cloudflareAccountId,
+    accessId: env.ai.cloudflareAccessId,
+    useGateway: true,
+    strengths: ['edge', 'free-tier', 'privacy'],
   },
 }
 
@@ -58,6 +58,7 @@ export interface ParallelExecutionConfig {
   maxTokens?: number
   parallel?: boolean
   timeout?: number
+  taskType?: 'coding' | 'reasoning' | 'speed' | 'analysis' | 'general'
 }
 
 export interface ModelResponse {
@@ -77,6 +78,10 @@ export interface ParallelExecutionResult {
   failed: number
 }
 
+function getProviderConfig(provider: ProviderId) {
+  return PROVIDERS[provider]
+}
+
 async function callModel(
   provider: ProviderId,
   model: string,
@@ -86,7 +91,7 @@ async function callModel(
   const start = Date.now()
   const providerConfig = PROVIDERS[provider]
   const apiKey = providerConfig.key()
-  
+
   if (!apiKey) {
     return {
       provider,
@@ -105,16 +110,27 @@ async function callModel(
     stream: false,
   }
 
+  let url = `${providerConfig.baseUrl}/chat/completions`
+  let headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+  }
+
+  if (provider === 'cloudflare') {
+    url = `${providerConfig.baseUrl}/${model}`
+    headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    }
+  }
+
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), options.timeout ?? 60000)
 
-    const response = await fetch(`${providerConfig.baseUrl}/chat/completions`, {
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     })
@@ -133,10 +149,18 @@ async function callModel(
     }
 
     const data = await response.json()
+
+    let content = ''
+    if (provider === 'cloudflare') {
+      content = data.result?.response || data.result || JSON.stringify(data)
+    } else {
+      content = data.choices?.[0]?.message?.content || ''
+    }
+
     return {
       provider,
       model,
-      content: data.choices?.[0]?.message?.content || '',
+      content,
       usage: data.usage,
       latency: Date.now() - start,
     }
@@ -151,14 +175,69 @@ async function callModel(
   }
 }
 
+function selectModelsForTask(taskType: string, availableProviders: ProviderId[]): { provider: ProviderId; model: string }[] {
+  const taskModels: Record<string, { provider: ProviderId; model: string }[]> = {
+    coding: [
+      { provider: 'deepseek', model: 'deepseek-coder' },
+      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
+      { provider: 'cerebras', model: 'llama-3.3-70b' },
+    ],
+    reasoning: [
+      { provider: 'deepseek', model: 'deepseek-chat' },
+      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+      { provider: 'openrouter', model: 'anthropic/claude-3.5-sonnet' },
+      { provider: 'mistral', model: 'mistral-large' },
+    ],
+    speed: [
+      { provider: 'cerebras', model: 'llama-3.3-70b' },
+      { provider: 'groq', model: 'llama-3.1-8b-instant' },
+      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
+      { provider: 'cloudflare', model: '@cf/meta/llama-3.3-70b-instruct' },
+    ],
+    analysis: [
+      { provider: 'openrouter', model: 'anthropic/claude-3.5-sonnet' },
+      { provider: 'mistral', model: 'mistral-large' },
+      { provider: 'deepseek', model: 'deepseek-chat' },
+      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+    ],
+    general: [
+      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+      { provider: 'openrouter', model: 'openai/gpt-4o' },
+      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
+      { provider: 'cloudflare', model: '@cf/meta/llama-3.3-70b-instruct' },
+    ],
+  }
+
+  const models = taskModels[taskType] || taskModels.general
+  return models.filter(m => availableProviders.includes(m.provider))
+}
+
 export async function executeParallel(config: ParallelExecutionConfig): Promise<ParallelExecutionResult> {
   const start = Date.now()
+
+  const providerIds = (Object.keys(PROVIDERS) as ProviderId[])
+  const availableProviders = providerIds.filter(p => PROVIDERS[p].key())
+
+  let models = config.models
+  if (!models.length && config.taskType) {
+    models = selectModelsForTask(config.taskType, availableProviders)
+  }
+  if (!models.length) {
+    models = [{ provider: 'groq', model: 'llama-3.3-70b-versatile' }]
+  }
+
+  const validModels = models.filter(m => {
+    const p = PROVIDERS[m.provider]
+    return p && p.key()
+  })
+
   const messages = [
     ...(config.systemPrompt ? [{ role: 'system', content: config.systemPrompt }] : []),
     { role: 'user', content: config.prompt },
   ]
 
-  const modelCalls = config.models.map(({ provider, model }) =>
+  const modelCalls = validModels.map(({ provider, model }) =>
     callModel(provider, model, messages, {
       temperature: config.temperature,
       maxTokens: config.maxTokens,
@@ -186,15 +265,12 @@ export async function executeWithAggregation(
   aggregatorPrompt?: string
 ): Promise<ParallelExecutionResult> {
   const result = await executeParallel(config)
-  
+
   const validResponses = result.responses.filter(r => !r.error && r.content)
   if (validResponses.length === 0) return result
+  if (validResponses.length === 1) return { ...result, aggregated: validResponses[0].content }
 
-  if (validResponses.length === 1) {
-    return { ...result, aggregated: validResponses[0].content }
-  }
-
-  const aggregator = aggregatorPrompt || `You are an expert synthesizer. Combine the following responses from different AI models into a single, comprehensive, and coherent answer. Preserve the best insights from each response. Eliminate redundancy. Structure the final answer clearly.
+  const aggregator = aggregatorPrompt || `You are an expert synthesizer. Combine the following responses from different AI models into a single, comprehensive, and coherent answer. Preserve the best insights from each. Eliminate redundancy. Structure clearly.
 
 Responses:
 {{RESPONSES}}`
@@ -236,4 +312,12 @@ export function getAllModels(): { provider: ProviderId; model: string; available
     }
   }
   return all
+}
+
+export function getBestModelForTask(taskType: string): { provider: ProviderId; model: string } | null {
+  const providerIds = (Object.keys(PROVIDERS) as ProviderId[])
+  const available = providerIds.filter(p => PROVIDERS[p].key())
+  if (!available.length) return null
+  const models = selectModelsForTask(taskType, available)
+  return models[0] || null
 }
