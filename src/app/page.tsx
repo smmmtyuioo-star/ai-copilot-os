@@ -7,6 +7,7 @@ import type { Message, Conversation } from '@/types'
 import { formatDate, generateId } from '@/lib/utils'
 
 const URL_REGEX = /https?:\/\/[^\s]+/g
+const BUILD_COMMAND = /^\/build\s+(.+)$/i
 
 const CONNECTOR_COMMANDS: Record<string, { pattern: RegExp; action: string; extract: (match: RegExpMatchArray) => any }> = {
   github: {
@@ -30,6 +31,7 @@ const CONNECTOR_COMMANDS: Record<string, { pattern: RegExp; action: string; extr
     extract: () => ({}),
   },
 }
+
 
 const THINKING_STAGES = ['Analyzing', 'Thinking', 'Building', 'Processing', 'Researching', 'Crafting']
 
@@ -116,6 +118,18 @@ export default function HomePage() {
     return null
   }
 
+async function handleBuildCommand(userMessage: string): Promise<string | null> {
+    const match = userMessage.match(BUILD_COMMAND)
+    if (!match) return null
+    const prompt = match[1].trim()
+    if (!prompt) return 'Usage: `/build your project description here`'
+
+    // Navigate to build page with the prompt
+    localStorage.setItem('ac_build_prompt', prompt)
+    window.location.href = '/build'
+    return `🚀 Starting build pipeline for: **${prompt}**\n\nRedirecting to Build Pipeline with live preview...`
+  }
+
   function formatConnectorResult(action: string, data: any): string {
     switch (action) {
       case 'list-repos':
@@ -156,6 +170,21 @@ export default function HomePage() {
     setInput('')
     setStreaming(true)
     setStreamContent('')
+
+    // Check for build command first
+    const buildResult = await handleBuildCommand(input)
+    if (buildResult) {
+      setStreamContent(buildResult)
+      const asstMsg: Message = {
+        id: generateId(), conversation_id: convId, role: 'assistant',
+        content: buildResult, created_at: new Date().toISOString(),
+      }
+      await db.addMessage(asstMsg)
+      setMessages(prev => [...prev, asstMsg])
+      setStreaming(false)
+      setStreamContent('')
+      return
+    }
 
     // Check for connector commands first
     const connectorResult = await executeConnector(input)
