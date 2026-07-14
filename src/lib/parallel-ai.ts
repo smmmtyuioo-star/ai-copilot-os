@@ -37,6 +37,26 @@ const PROVIDERS = {
     key: () => env.ai.openrouterKey,
     strengths: ['gpt-4o', 'claude', 'variety'],
   },
+  nvidia: {
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    models: ['nvidia/nemotron-3-ultra', 'nvidia/nemotron-3-8b', 'nvidia/llama-3.1-nemotron-70b-instruct'],
+    key: () => env.ai.nvidiaKey,
+    strengths: ['reasoning', 'coding', 'accuracy', 'nvidia-optimized'],
+  },
+  tavily: {
+    baseUrl: 'https://api.tavily.com',
+    models: ['tavily-search', 'tavily-extract'],
+    key: () => env.ai.tavilyKey,
+    strengths: ['search', 'background-data', 'real-time', 'citations'],
+    isSearch: true,
+  },
+  googleSafeBrowsing: {
+    baseUrl: 'https://safebrowsing.googleapis.com/v4',
+    models: ['url-check', 'threat-list'],
+    key: () => env.ai.googleSafeBrowsingKey,
+    strengths: ['url-safety', 'phishing', 'malware', 'unwanted-software'],
+    isSecurity: true,
+  },
   cloudflare: {
     baseUrl: `https://api.cloudflare.com/client/v4/accounts/${env.ai.cloudflareAccountId}/ai/run`,
     models: ['@cf/meta/llama-3.3-70b-instruct', '@cf/meta/llama-3.1-8b-instruct', '@cf/mistral/mistral-7b-instruct-v0.1', '@cf/deepseek/deepseek-r1-distill-qwen-32b'],
@@ -58,7 +78,7 @@ export interface ParallelExecutionConfig {
   maxTokens?: number
   parallel?: boolean
   timeout?: number
-  taskType?: 'coding' | 'reasoning' | 'speed' | 'analysis' | 'general'
+  taskType?: 'coding' | 'reasoning' | 'speed' | 'analysis' | 'general' | 'search' | 'security'
 }
 
 export interface ModelResponse {
@@ -68,6 +88,7 @@ export interface ModelResponse {
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
   latency: number
   error?: string
+  citations?: string[]
 }
 
 export interface ParallelExecutionResult {
@@ -78,8 +99,52 @@ export interface ParallelExecutionResult {
   failed: number
 }
 
-function getProviderConfig(provider: ProviderId) {
-  return PROVIDERS[provider]
+function selectModelsForTask(taskType: string, availableProviders: string[]): { provider: ProviderId; model: string }[] {
+  const taskModels: Record<string, { provider: ProviderId; model: string }[]> = {
+    coding: [
+      { provider: 'deepseek', model: 'deepseek-coder' },
+      { provider: 'nvidia', model: 'nvidia/nemotron-3-ultra' },
+      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
+      { provider: 'cerebras', model: 'llama-3.3-70b' },
+    ],
+    reasoning: [
+      { provider: 'nvidia', model: 'nvidia/nemotron-3-ultra' },
+      { provider: 'deepseek', model: 'deepseek-chat' },
+      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+      { provider: 'openrouter', model: 'anthropic/claude-3.5-sonnet' },
+      { provider: 'mistral', model: 'mistral-large' },
+    ],
+    speed: [
+      { provider: 'cerebras', model: 'llama-3.3-70b' },
+      { provider: 'groq', model: 'llama-3.1-8b-instant' },
+      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
+      { provider: 'cloudflare', model: '@cf/meta/llama-3.3-70b-instruct' },
+    ],
+    analysis: [
+      { provider: 'openrouter', model: 'anthropic/claude-3.5-sonnet' },
+      { provider: 'mistral', model: 'mistral-large' },
+      { provider: 'deepseek', model: 'deepseek-chat' },
+      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+    ],
+    search: [
+      { provider: 'tavily', model: 'tavily-search' },
+      { provider: 'openrouter', model: 'google/gemini-pro' },
+    ],
+    security: [
+      { provider: 'googleSafeBrowsing', model: 'url-check' },
+      { provider: 'tavily', model: 'tavily-extract' },
+    ],
+    general: [
+      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+      { provider: 'openrouter', model: 'openai/gpt-4o' },
+      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
+      { provider: 'cloudflare', model: '@cf/meta/llama-3.3-70b-instruct' },
+    ],
+  }
+
+  const models = taskModels[taskType] || taskModels.general
+  return models.filter(m => availableProviders.includes(m.provider))
 }
 
 async function callModel(
@@ -90,38 +155,33 @@ async function callModel(
 ): Promise<ModelResponse> {
   const start = Date.now()
   const providerConfig = PROVIDERS[provider]
-  const apiKey = providerConfig.key()
+  const apiKey = (PROVIDERS[provider] as any).key()
 
   if (!apiKey) {
-    return {
-      provider,
-      model,
-      content: '',
-      latency: Date.now() - start,
-      error: `No API key for ${provider}`,
-    }
+    return { provider, model, content: '', latency: Date.now() - start, error: `No API key for ${provider}` }
   }
 
-  const body = {
-    model,
-    messages,
-    temperature: options.temperature ?? 0.7,
-    max_tokens: options.maxTokens ?? 4096,
-    stream: false,
-  }
-
-  let url = `${providerConfig.baseUrl}/chat/completions`
+  let url = `${PROVIDERS[provider].baseUrl}/chat/completions`
   let headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
+    Authorization: `Bearer ${(PROVIDERS[provider] as any).key()}`,
   }
+  let body: any = { model, messages, temperature: 0.7, max_tokens: 4096, stream: false }
 
-  if (provider === 'cloudflare') {
-    url = `${providerConfig.baseUrl}/${model}`
-    headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    }
+  if (provider === 'tavily') {
+    url = 'https://api.tavily.com/search'
+    headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${env.ai.tavilyKey}` }
+    body = { query: messages[messages.length - 1].content, search_depth: 'advanced', include_answer: true, max_results: 5 }
+  } else if (provider === 'googleSafeBrowsing') {
+    url = `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${env.ai.googleSafeBrowsingKey}`
+    headers = { 'Content-Type': 'application/json' }
+    body = { client: { clientId: 'ai-copilot-os', clientVersion: '1.0' }, threatInfo: { threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE', 'POTENTIALLY_HARMFUL_APPLICATION'], platformTypes: ['ANY_PLATFORM'], threatEntryTypes: ['URL'], threatEntries: [{ url: messages[messages.length - 1].content }] } }
+  } else if (provider === 'cloudflare') {
+    url = `https://api.cloudflare.com/client/v4/accounts/${env.ai.cloudflareAccountId}/ai/run/${encodeURIComponent(model)}`
+    headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${env.ai.cloudflareApiToken}` }
+  } else if (provider === 'nvidia') {
+    url = 'https://integrate.api.nvidia.com/v1/chat/completions'
+    headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${env.ai.nvidiaKey}` }
   }
 
   try {
@@ -151,8 +211,20 @@ async function callModel(
     const data = await response.json()
 
     let content = ''
-    if (provider === 'cloudflare') {
+    let citations: string[] = []
+
+    if (provider === 'tavily') {
+      content = data.results?.map((r: any) => `${r.title}: ${r.content} (${r.url})`).join('\n\n') || ''
+      citations = data.results?.map((r: any) => r.url).filter(Boolean) || []
+    } else if (provider === 'googleSafeBrowsing') {
+      const threats = data.matches || []
+      content = threats.length > 0
+        ? `⚠️ UNSAFE: ${threats.map((t: any) => `${t.threatType} (${t.platformType})`).join(', ')}`
+        : '✅ SAFE: No threats detected'
+    } else if (provider === 'cloudflare') {
       content = data.result?.response || data.result || JSON.stringify(data)
+    } else if (provider === 'nvidia') {
+      content = data.choices?.[0]?.message?.content || ''
     } else {
       content = data.choices?.[0]?.message?.content || ''
     }
@@ -163,6 +235,7 @@ async function callModel(
       content,
       usage: data.usage,
       latency: Date.now() - start,
+      citations,
     }
   } catch (err) {
     return {
@@ -175,70 +248,24 @@ async function callModel(
   }
 }
 
-function selectModelsForTask(taskType: string, availableProviders: ProviderId[]): { provider: ProviderId; model: string }[] {
-  const taskModels: Record<string, { provider: ProviderId; model: string }[]> = {
-    coding: [
-      { provider: 'deepseek', model: 'deepseek-coder' },
-      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
-      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
-      { provider: 'cerebras', model: 'llama-3.3-70b' },
-    ],
-    reasoning: [
-      { provider: 'deepseek', model: 'deepseek-chat' },
-      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
-      { provider: 'openrouter', model: 'anthropic/claude-3.5-sonnet' },
-      { provider: 'mistral', model: 'mistral-large' },
-    ],
-    speed: [
-      { provider: 'cerebras', model: 'llama-3.3-70b' },
-      { provider: 'groq', model: 'llama-3.1-8b-instant' },
-      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
-      { provider: 'cloudflare', model: '@cf/meta/llama-3.3-70b-instruct' },
-    ],
-    analysis: [
-      { provider: 'openrouter', model: 'anthropic/claude-3.5-sonnet' },
-      { provider: 'mistral', model: 'mistral-large' },
-      { provider: 'deepseek', model: 'deepseek-chat' },
-      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
-    ],
-    general: [
-      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
-      { provider: 'openrouter', model: 'openai/gpt-4o' },
-      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
-      { provider: 'cloudflare', model: '@cf/meta/llama-3.3-70b-instruct' },
-    ],
-  }
-
-  const models = taskModels[taskType] || taskModels.general
-  return models.filter(m => availableProviders.includes(m.provider))
-}
-
 export async function executeParallel(config: ParallelExecutionConfig): Promise<ParallelExecutionResult> {
   const start = Date.now()
+  const providerIds = Object.keys(PROVIDERS) as ProviderId[]
+  const availableProviders = providerIds.filter(p => (PROVIDERS[p].key?.() || '') !== '')
 
-  const providerIds = (Object.keys(PROVIDERS) as ProviderId[])
-  const availableProviders = providerIds.filter(p => PROVIDERS[p].key())
-
-  let models = config.models
+  let models: { provider: ProviderId; model: string }[] = config.models
   if (!models.length && config.taskType) {
+    const providerIds = Object.keys(PROVIDERS) as ProviderId[]
+    const availableProviders = providerIds.filter(p => (PROVIDERS[p].key?.() || '') !== '')
     models = selectModelsForTask(config.taskType, availableProviders)
   }
-  if (!models.length) {
-    models = [{ provider: 'groq', model: 'llama-3.3-70b-versatile' }]
-  }
+  if (!models.length) models = [{ provider: 'groq', model: 'llama-3.3-70b-versatile' }]
 
-  const validModels = models.filter(m => {
-    const p = PROVIDERS[m.provider]
-    return p && p.key()
-  })
-
-  const messages = [
-    ...(config.systemPrompt ? [{ role: 'system', content: config.systemPrompt }] : []),
-    { role: 'user', content: config.prompt },
-  ]
+  const validModels = models.filter(m => PROVIDERS[m.provider]?.key?.())
+  const messages = [...(config.systemPrompt ? [{ role: 'system', content: config.systemPrompt }] : []), { role: 'user', content: config.prompt }]
 
   const modelCalls = validModels.map(({ provider, model }) =>
-    callModel(provider, model, messages, {
+    callModel(provider, model, config.systemPrompt ? [{ role: 'system', content: config.systemPrompt }, { role: 'user', content: config.prompt }] : [{ role: 'user', content: config.prompt }], {
       temperature: config.temperature,
       maxTokens: config.maxTokens,
       timeout: config.timeout,
@@ -247,30 +274,28 @@ export async function executeParallel(config: ParallelExecutionConfig): Promise<
 
   const responses = config.parallel !== false
     ? await Promise.all(modelCalls)
-    : await modelCalls.reduce(async (acc, call) => [...(await acc), await call], Promise.resolve([] as ModelResponse[]))
+    : await (async () => {
+        const results: ModelResponse[] = []
+        for (const call of modelCalls) {
+          results.push(await call)
+        }
+        return results
+      })()
 
   const successful = responses.filter(r => !r.error).length
   const failed = responses.filter(r => !!r.error).length
 
-  return {
-    responses,
-    totalLatency: Date.now() - start,
-    successful,
-    failed,
-  }
+  return { responses, totalLatency: Date.now() - start, successful, failed }
 }
 
-export async function executeWithAggregation(
-  config: ParallelExecutionConfig,
-  aggregatorPrompt?: string
-): Promise<ParallelExecutionResult> {
+export async function executeWithAggregation(config: any, aggregatorPrompt?: string) {
   const result = await executeParallel(config)
 
   const validResponses = result.responses.filter(r => !r.error && r.content)
   if (validResponses.length === 0) return result
   if (validResponses.length === 1) return { ...result, aggregated: validResponses[0].content }
 
-  const aggregator = aggregatorPrompt || `You are an expert synthesizer. Combine the following responses from different AI models into a single, comprehensive, and coherent answer. Preserve the best insights from each. Eliminate redundancy. Structure clearly.
+  const aggregator = aggregatorPrompt || `Synthesize these responses into one superior answer. Keep best insights, remove redundancy, structure clearly.
 
 Responses:
 {{RESPONSES}}`
@@ -279,45 +304,29 @@ Responses:
     .map((r, i) => `--- Model ${i + 1} (${r.provider}/${r.model}) ---\n${r.content}`)
     .join('\n\n')
 
-  const aggregated = await callModel(
-    'groq',
-    'llama-3.3-70b-versatile',
-    [
-      { role: 'system', content: 'You are a synthesis expert. Combine multiple AI responses into one superior answer.' },
-      { role: 'user', content: aggregator.replace('{{RESPONSES}}', responsesText) },
-    ],
-    { temperature: 0.3, maxTokens: 8192 }
-  )
+  const aggregated = await callModel('groq', 'llama-3.3-70b-versatile', [
+    { role: 'system', content: 'You are a synthesis expert. Combine multiple AI responses into one superior answer.' },
+    { role: 'user', content: aggregator.replace('{{RESPONSES}}', responsesText) }
+  ], { temperature: 0.3, maxTokens: 8192 })
 
-  return {
-    ...result,
-    aggregated: aggregated.error ? validResponses[0].content : aggregated.content,
-  }
+  return { ...result, aggregated: aggregated.error ? validResponses[0].content : aggregated.content }
 }
 
-export function getAvailableModels(): Record<ProviderId, string[]> {
-  const available: Record<ProviderId, string[]> = {} as any
+export function getAvailableModels() {
+  const available: Record<string, string[]> = {}
   for (const [id, provider] of Object.entries(PROVIDERS)) {
-    available[id as ProviderId] = provider.key() ? provider.models : []
+    available[id] = provider.key() ? provider.models : []
   }
   return available
 }
 
-export function getAllModels(): { provider: ProviderId; model: string; available: boolean }[] {
-  const all: { provider: ProviderId; model: string; available: boolean }[] = []
+export function getAllModels() {
+  const all: { provider: string; model: string; available: boolean }[] = []
   for (const [providerId, provider] of Object.entries(PROVIDERS)) {
     const hasKey = !!provider.key()
     for (const model of provider.models) {
-      all.push({ provider: providerId as ProviderId, model, available: hasKey })
+      all.push({ provider: providerId, model, available: hasKey })
     }
   }
   return all
-}
-
-export function getBestModelForTask(taskType: string): { provider: ProviderId; model: string } | null {
-  const providerIds = (Object.keys(PROVIDERS) as ProviderId[])
-  const available = providerIds.filter(p => PROVIDERS[p].key())
-  if (!available.length) return null
-  const models = selectModelsForTask(taskType, available)
-  return models[0] || null
 }
