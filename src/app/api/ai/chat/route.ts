@@ -105,18 +105,36 @@ Whenever the user asks a question or requests a task, use ALL relevant capabilit
       )
     }
 
+    const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
         const reader = response.body?.getReader()
         if (!reader) { controller.close(); return }
+        const decoder = new TextDecoder()
+        let buffer = ''
 
         while (true) {
           const { done, value } = await reader.read()
+          const text = decoder.decode(value || new Uint8Array(), { stream: !done })
+          buffer += text
+
+          const events = buffer.split('\n\n')
+          buffer = events.pop() || ''
+
+          for (const event of events) {
+            const lines = event.split('\n').filter(l => l.startsWith('data: '))
+            for (const line of lines) {
+              const data = line.slice(6)
+              if (data === '[DONE]') continue
+              controller.enqueue(encoder.encode(line + '\n\n'))
+            }
+          }
+
           if (done) {
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
             controller.close()
             break
           }
-          controller.enqueue(value)
         }
       },
     })
