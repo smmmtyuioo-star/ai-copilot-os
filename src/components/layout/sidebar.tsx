@@ -6,17 +6,22 @@ import { useAuth } from '@/hooks/useAuth'
 import {
   LayoutDashboard, MessageSquare, Workflow, Bot, Globe,
   Brain, Plug, Puzzle, Network, Key, Settings, LogOut,
+  FileText, Wand2, Monitor, Play,
 } from 'lucide-react'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/chat', label: 'Chat', icon: MessageSquare },
+  { href: '/build', label: 'Build Pipeline', icon: Play },
+  { href: '/preview', label: 'Live Preview', icon: Monitor },
   { href: '/workflows', label: 'Workflows', icon: Workflow },
   { href: '/agents', label: 'Agents', icon: Bot },
+  { href: '/skills', label: 'Skills', icon: Wand2 },
+  { href: '/plugins', label: 'Plugins', icon: Puzzle },
+  { href: '/documents', label: 'Documents', icon: FileText },
   { href: '/browser', label: 'Browser', icon: Globe },
   { href: '/memory', label: 'Memory', icon: Brain },
   { href: '/connectors', label: 'Connectors', icon: Plug },
-  { href: '/plugins', label: 'Plugins', icon: Puzzle },
   { href: '/mcp', label: 'MCP', icon: Network },
   { href: '/api-center', label: 'API Center', icon: Key },
 ]

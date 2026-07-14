@@ -1,10 +1,12 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Workflow, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor } from 'lucide-react'
+import { Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Workflow, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle } from 'lucide-react'
 import { streamAiResponse } from '@/services/chat'
 import { db } from '@/lib/db'
 import type { Message, Conversation } from '@/types'
 import { formatDate, generateId } from '@/lib/utils'
+
+const URL_REGEX = /https?:\/\/[^\s]+/g
 
 export default function HomePage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -15,6 +17,7 @@ export default function HomePage() {
   const [streamContent, setStreamContent] = useState('')
   const [sidebar, setSidebar] = useState(false)
   const [dark, setDark] = useState(false)
+  const [urlPreview, setUrlPreview] = useState<{ url: string; title: string; loading: boolean; error: string } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -94,6 +97,30 @@ export default function HomePage() {
       setMessages(prev => [...prev, asstMsg])
     }
     setStreaming(false); setStreamContent('')
+  }
+
+  async function handleInputChange(value: string) {
+    setInput(value)
+    const urls = value.match(URL_REGEX)
+    if (urls) {
+      const url = urls[0]
+      setUrlPreview({ url, title: 'Fetching...', loading: true, error: '' })
+      try {
+        const res = await fetch('/api/browser/fetch', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setUrlPreview({ url, title: data.content?.slice(0, 150) || 'URL detected', loading: false, error: '' })
+        } else {
+          setUrlPreview({ url, title: '', loading: false, error: 'Could not fetch URL' })
+        }
+      } catch {
+        setUrlPreview({ url, title: '', loading: false, error: 'Fetch failed' })
+      }
+    } else {
+      setUrlPreview(null)
+    }
   }
 
   async function handleKeyDown(e: React.KeyboardEvent) {
@@ -244,12 +271,29 @@ export default function HomePage() {
         {/* Input */}
         <div className="border-t border-gray-200 dark:border-gray-800 p-4">
           <div className="mx-auto max-w-3xl flex gap-2">
-            <input
-              value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
-              placeholder="Ask anything — build, research, automate..."
-              disabled={streaming}
-              className="flex-1 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="flex-1 relative">
+              <input
+                value={input} onChange={e => handleInputChange(e.target.value)} onKeyDown={handleKeyDown}
+                placeholder="Ask anything — build, research, automate..."
+                disabled={streaming}
+                className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {urlPreview && (
+                <div className="absolute bottom-full left-0 right-0 mb-2 rounded-lg border border-blue-200 bg-blue-50 p-2 text-xs dark:border-blue-800 dark:bg-blue-900/30">
+                  {urlPreview.loading ? (
+                    <div className="flex items-center gap-2 text-blue-600"><Loader2 className="h-3 w-3 animate-spin" /> Fetching URL info...</div>
+                  ) : urlPreview.error ? (
+                    <div className="flex items-center gap-2 text-yellow-600"><AlertCircle className="h-3 w-3" /> {urlPreview.error}</div>
+                  ) : (
+                    <div className="flex items-start gap-2">
+                      <ExternalLink className="h-3 w-3 mt-0.5 shrink-0 text-blue-600" />
+                      <span className="text-gray-700 dark:text-gray-300 line-clamp-2">{urlPreview.title}</span>
+                    </div>
+                  )}
+                  <button onClick={() => { setInput(urlPreview.url); setUrlPreview(null) }} className="mt-1 text-blue-600 hover:underline">Add to message</button>
+                </div>
+              )}
+            </div>
             <button onClick={handleSend} disabled={!input.trim() || streaming}
               className="rounded-xl bg-blue-600 p-3 text-white hover:bg-blue-700 disabled:opacity-50">
               {streaming ? <span className="block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="h-4 w-4" />}
