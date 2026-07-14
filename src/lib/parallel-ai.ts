@@ -4,35 +4,47 @@ const PROVIDERS = {
   omniroute: {
     baseUrl: 'https://api.omniroute.online/v1',
     models: [
-      // OpenAI models via OmniRoute
       'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-preview', 'o1-mini',
-      // Anthropic models via OmniRoute
       'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229',
-      // Meta models via OmniRoute
       'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it',
-      'meta-llama/Llama-3.3-70B-Instruct-Turbo', 'meta-llama/Llama-3.1-70B-Instruct',
-      // Other models via OmniRoute
-      'command-r-plus', 'command-r',
-      'mistral-large', 'mistral-medium',
+      'llama-3.3-70b-cerebras', 'llama-3.1-70b-cerebras',
+      'accounts/fireworks/models/llama-v3p3-70b-instruct', 'accounts/fireworks/models/llama-v3p1-70b-instruct',
+      'deepseek-chat', 'deepseek-coder',
+      'mistral-large', 'mistral-medium', 'mistral-small',
       'qwen-2.5-72b', 'qwen-2.5-32b',
+      'command-r-plus', 'command-r',
     ],
     key: () => env.ai.omnirouteKey,
   },
-  // Fallback providers (only used if OmniRoute fails completely)
   groq: {
     baseUrl: 'https://api.groq.com/openai/v1',
     models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
     key: () => env.ai.groqKey,
   },
-  openai: {
-    baseUrl: 'https://api.openai.com/v1',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
-    key: () => env.ai.openaiKey,
+  cerebras: {
+    baseUrl: 'https://api.cerebras.ai/v1',
+    models: ['llama-3.3-70b', 'llama-3.1-70b'],
+    key: () => env.ai.cerebrasKey,
   },
-  anthropic: {
-    baseUrl: 'https://api.anthropic.com/v1',
-    models: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022'],
-    key: () => env.ai.anthropicKey,
+  fireworks: {
+    baseUrl: 'https://api.fireworks.ai/inference/v1',
+    models: ['accounts/fireworks/models/llama-v3p3-70b-instruct', 'accounts/fireworks/models/llama-v3p1-70b-instruct'],
+    key: () => env.ai.fireworksKey,
+  },
+  deepseek: {
+    baseUrl: 'https://api.deepseek.com/v1',
+    models: ['deepseek-chat', 'deepseek-coder'],
+    key: () => env.ai.deepseekKey,
+  },
+  mistral: {
+    baseUrl: 'https://api.mistral.ai/v1',
+    models: ['mistral-large', 'mistral-medium', 'mistral-small'],
+    key: () => env.ai.mistralKey,
+  },
+  openrouter: {
+    baseUrl: 'https://openrouter.ai/api/v1',
+    models: ['openai/gpt-4o', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct', 'google/gemini-pro'],
+    key: () => env.ai.openrouterKey,
   },
 }
 

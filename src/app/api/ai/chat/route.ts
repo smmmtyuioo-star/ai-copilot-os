@@ -10,6 +10,11 @@ const PROVIDERS: Record<string, { baseUrl: string; key: () => string; envVar: st
       'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-preview', 'o1-mini',
       'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229',
       'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it',
+      'llama-3.3-70b-cerebras', 'llama-3.1-70b-cerebras',
+      'accounts/fireworks/models/llama-v3p3-70b-instruct', 'accounts/fireworks/models/llama-v3p1-70b-instruct',
+      'deepseek-chat', 'deepseek-coder',
+      'mistral-large', 'mistral-medium', 'mistral-small',
+      'qwen-2.5-72b', 'qwen-2.5-32b',
       'command-r-plus', 'command-r',
     ],
   },
@@ -19,24 +24,10 @@ const PROVIDERS: Record<string, { baseUrl: string; key: () => string; envVar: st
     envVar: 'GROQ_API_KEY',
     models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
   },
-  openai: {
-    baseUrl: 'https://api.openai.com/v1',
-    key: () => env.ai.openaiKey,
-    envVar: 'OPENAI_API_KEY',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
-  },
-  anthropic: {
-    baseUrl: 'https://api.anthropic.com/v1',
-    key: () => env.ai.anthropicKey,
-    envVar: 'ANTHROPIC_API_KEY',
-    models: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022'],
-  },
 }
 
 function detectProvider(model: string): string | null {
-  // OmniRoute handles ALL models - it's the primary gateway
   if (env.ai.omnirouteKey) return 'omniroute'
-  // Fallback detection for direct providers
   if (model.startsWith('gpt-')) return 'openai'
   if (model.startsWith('claude-')) return 'anthropic'
   if (['llama-', 'mixtral-', 'gemma-'].some(p => model.startsWith(p))) return 'groq'
@@ -75,17 +66,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Messages are required' }, { status: 400 })
     }
 
-    // Use OmniRoute as primary if available, otherwise auto-detect
     const modelToUse = model || env.ai.defaultModel
     let providerName = explicitProvider || detectProvider(modelToUse) || (env.ai.omnirouteKey ? 'omniroute' : env.ai.defaultProvider)
-    
-    // Fallback chain: omniroute -> groq -> openai -> anthropic
-    const fallbackChain = ['omniroute', 'groq', 'openai', 'anthropic']
+
+    const fallbackChain = ['omniroute', 'groq']
     const startIndex = fallbackChain.indexOf(providerName)
     const providersToTry = fallbackChain.slice(startIndex >= 0 ? startIndex : 0)
 
     let lastError = ''
-    
+
     for (const providerName of providersToTry) {
       const provider = PROVIDERS[providerName]
 
@@ -118,7 +107,6 @@ export async function POST(request: NextRequest) {
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
         lastError = `${providerName}: ${error.error?.message || response.statusText}`
-        // Continue to next fallback on rate limit or server error
         if (response.status === 429 || response.status >= 500) continue
         return NextResponse.json(
           { error: lastError },
@@ -131,7 +119,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(data)
       }
 
-      // Success - stream the response
       const encoder = new TextEncoder()
       const responseStream = new ReadableStream({
         async start(controller) {
