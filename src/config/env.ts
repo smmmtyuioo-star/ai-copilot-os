@@ -7,10 +7,34 @@ export const env = {
     openaiKey: process.env.OPENAI_API_KEY || '',
     groqKey: process.env.GROQ_API_KEY || '',
     anthropicKey: process.env.ANTHROPIC_API_KEY || '',
+    togetherKey: process.env.TOGETHER_API_KEY || '',
+    fireworksKey: process.env.FIREWORKS_API_KEY || '',
+    deepinfraKey: process.env.DEEPINFRA_API_KEY || '',
+    perplexityKey: process.env.PERPLEXITY_API_KEY || '',
+    cohereKey: process.env.COHERE_API_KEY || '',
+    omnirouteKey: process.env.OMNIROUTE_API_KEY || '',
     defaultProvider: process.env.NEXT_PUBLIC_DEFAULT_AI_PROVIDER || 'groq',
     defaultModel: process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL || 'llama-3.3-70b-versatile',
     maxTokens: parseInt(process.env.NEXT_PUBLIC_AI_MAX_TOKENS || '4096'),
     temperature: parseFloat(process.env.NEXT_PUBLIC_AI_TEMPERATURE || '0.7'),
+  },
+  together: {
+    apiKey: process.env.TOGETHER_API_KEY || '',
+  },
+  fireworks: {
+    apiKey: process.env.FIREWORKS_API_KEY || '',
+  },
+  deepinfra: {
+    apiKey: process.env.DEEPINFRA_API_KEY || '',
+  },
+  perplexity: {
+    apiKey: process.env.PERPLEXITY_API_KEY || '',
+  },
+  cohere: {
+    apiKey: process.env.COHERE_API_KEY || '',
+  },
+  omniroute: {
+    apiKey: process.env.OMNIROUTE_API_KEY || '',
   },
   app: {
     name: 'AI Copilot OS',
@@ -27,8 +51,8 @@ export function validateEnv(): string[] {
   const missing: string[] = []
   if (!env.supabase.url) missing.push('NEXT_PUBLIC_SUPABASE_URL')
   if (!env.supabase.anonKey) missing.push('NEXT_PUBLIC_SUPABASE_ANON_KEY')
-  if (!env.ai.openaiKey && !env.ai.groqKey && !env.ai.anthropicKey) {
-    missing.push('At least one AI provider key: OPENAI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY')
+  if (!env.ai.openaiKey && !env.ai.groqKey && !env.ai.anthropicKey && !env.ai.togetherKey && !env.ai.fireworksKey && !env.ai.deepinfraKey && !env.ai.perplexityKey && !env.ai.cohereKey) {
+    missing.push('At least one AI provider key: OPENAI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY, TOGETHER_API_KEY, FIREWORKS_API_KEY, DEEPINFRA_API_KEY, PERPLEXITY_API_KEY, or COHERE_API_KEY')
   }
   return missing
 }
