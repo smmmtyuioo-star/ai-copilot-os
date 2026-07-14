@@ -10,8 +10,9 @@ import {
 } from 'lucide-react'
 
 const navItems = [
+  { href: '/', label: 'Main Chat', icon: MessageSquare },
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/chat', label: 'Chat', icon: MessageSquare },
+  { href: '/chat', label: 'Chat (Dashboard)', icon: MessageSquare },
   { href: '/build', label: 'Build Pipeline', icon: Play },
   { href: '/preview', label: 'Live Preview', icon: Monitor },
   { href: '/workflows', label: 'Workflows', icon: Workflow },
@@ -33,10 +34,10 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
       <div className="flex h-14 items-center border-b border-gray-200 px-4 dark:border-gray-700">
-        <Link href="/dashboard" className="flex items-center gap-2 font-bold text-gray-900 dark:text-gray-100">
-          <Brain className="h-6 w-6 text-blue-600" />
-          <span>AI Copilot OS</span>
-        </Link>
+          <Link href="/" className="flex items-center gap-2 font-bold text-gray-900 dark:text-gray-100">
+            <Brain className="h-6 w-6 text-blue-600" />
+            <span>AI Copilot OS</span>
+          </Link>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
