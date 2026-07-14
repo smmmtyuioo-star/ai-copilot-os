@@ -81,8 +81,7 @@ export default function ChatPage() {
 
     const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
 
-    let fullResponse = ''
-    await streamAiResponse(
+    const fullResponse = await streamAiResponse(
       history,
       undefined,
       (token) => { setStreamContent(prev => prev + token) },

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const PROVIDERS: Record<string, { baseUrl: string; envKey: string }> = {
-  openai: { baseUrl: 'https://api.openai.com/v1', envKey: process.env.OPENAI_API_KEY || '' },
-  groq: { baseUrl: 'https://api.groq.com/openai/v1', envKey: process.env.GROQ_API_KEY || '' },
+const PROVIDERS: Record<string, { baseUrl: string; envKey: () => string; envVar: string }> = {
+  openai: { baseUrl: 'https://api.openai.com/v1', envKey: () => process.env.OPENAI_API_KEY || '', envVar: 'OPENAI_API_KEY' },
+  groq: { baseUrl: 'https://api.groq.com/openai/v1', envKey: () => process.env.GROQ_API_KEY || '', envVar: 'GROQ_API_KEY' },
 }
 
 function getProvider(model: string) {
@@ -20,11 +20,11 @@ export async function POST(request: NextRequest) {
     }
 
     const provider = getProvider(agent.model || 'llama-3.3-70b-versatile')
+    const apiKey = provider.envKey()
 
-    if (!provider.envKey) {
-      const keyName = agent.model?.startsWith('gpt-') ? 'OPENAI_API_KEY' : 'GROQ_API_KEY'
+    if (!apiKey) {
       return NextResponse.json(
-        { error: `API key not configured. Set ${keyName} in your environment variables.`, config: { key: keyName } },
+        { error: `API key not configured. Set ${provider.envVar} in your environment variables.`, config: { key: provider.envVar } },
         { status: 503 },
       )
     }
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${provider.envKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: agent.model || 'llama-3.3-70b-versatile',

@@ -81,8 +81,7 @@ export default function HomePage() {
     setInput(''); setStreaming(true); setStreamContent('')
 
     const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
-    let fullResponse = ''
-    await streamAiResponse(history, 'llama-3.3-70b-versatile',
+    const fullResponse = await streamAiResponse(history, 'llama-3.3-70b-versatile',
       (token) => setStreamContent(prev => prev + token),
       (error) => { setStreamContent(`Error: ${error}`); setStreaming(false) },
     )
