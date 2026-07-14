@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         model: agent.model || 'llama-3.3-70b-versatile',
         messages: [
-          { role: 'system', content: agent.system_prompt },
+          { role: 'system', content: agent.system_prompt + '\n\nYou are part of AI Copilot OS — a full-stack engineering system. You can handle any task: frontend, backend, database, architecture, design, data analysis, trading systems, documentation, and more. Be thorough and precise.' },
           { role: 'user', content: userRequest },
         ],
         max_tokens: 4096,

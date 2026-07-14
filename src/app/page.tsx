@@ -8,12 +8,15 @@ import { formatDate, generateId } from '@/lib/utils'
 
 const URL_REGEX = /https?:\/\/[^\s]+/g
 
+const THINKING_STAGES = ['Analyzing', 'Thinking', 'Building', 'Processing', 'Researching', 'Crafting']
+
 export default function HomePage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConv, setActiveConv] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
+  const [thinkStage, setThinkStage] = useState(0)
   const [streamContent, setStreamContent] = useState('')
   const [sidebar, setSidebar] = useState(false)
   const [dark, setDark] = useState(false)
@@ -30,6 +33,12 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, streamContent])
+
+  useEffect(() => {
+    if (!streaming) { setThinkStage(0); return }
+    const interval = setInterval(() => setThinkStage(prev => (prev + 1) % THINKING_STAGES.length), 1800)
+    return () => clearInterval(interval)
+  }, [streaming])
 
   async function loadConversations() {
     const convs = await db.getConversations()
@@ -255,12 +264,31 @@ export default function HomePage() {
                 </div>
               </div>
             ))}
-            {streaming && streamContent && (
+            {streaming && (
               <div className="flex gap-4">
-                <Bot className="h-6 w-6 shrink-0 mt-1 text-blue-600" />
+                <div className="relative shrink-0 mt-1">
+                  <Bot className="h-6 w-6 text-blue-600" />
+                  <span className="absolute -bottom-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+                  </span>
+                </div>
                 <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-gray-100 dark:bg-gray-800">
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{streamContent}</p>
-                  <span className="inline-block w-2 h-4 bg-blue-600 animate-pulse ml-0.5" />
+                  {streamContent ? (
+                    <>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{streamContent}</p>
+                      <span className="inline-block w-2 h-4 bg-blue-600 animate-pulse ml-0.5" />
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-3 py-1">
+                      <div className="flex gap-1">
+                        <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                      <span className="text-sm text-blue-600 font-medium animate-pulse">{THINKING_STAGES[thinkStage]}...</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
