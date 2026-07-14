@@ -4,53 +4,35 @@ const PROVIDERS = {
   omniroute: {
     baseUrl: 'https://api.omniroute.online/v1',
     models: [
-      'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo',
-      'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022',
+      // OpenAI models via OmniRoute
+      'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-preview', 'o1-mini',
+      // Anthropic models via OmniRoute
+      'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229',
+      // Meta models via OmniRoute
       'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it',
       'meta-llama/Llama-3.3-70B-Instruct-Turbo', 'meta-llama/Llama-3.1-70B-Instruct',
+      // Other models via OmniRoute
       'command-r-plus', 'command-r',
+      'mistral-large', 'mistral-medium',
+      'qwen-2.5-72b', 'qwen-2.5-32b',
     ],
     key: () => env.ai.omnirouteKey,
   },
+  // Fallback providers (only used if OmniRoute fails completely)
   groq: {
     baseUrl: 'https://api.groq.com/openai/v1',
-    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it', 'llama-3.2-90b-vision', 'llama-3.2-11b-vision'],
+    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
     key: () => env.ai.groqKey,
   },
   openai: {
     baseUrl: 'https://api.openai.com/v1',
-    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-preview', 'o1-mini'],
+    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
     key: () => env.ai.openaiKey,
   },
   anthropic: {
     baseUrl: 'https://api.anthropic.com/v1',
-    models: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
+    models: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022'],
     key: () => env.ai.anthropicKey,
-  },
-  together: {
-    baseUrl: 'https://api.together.xyz/v1',
-    models: ['meta-llama/Llama-3.3-70B-Instruct-Turbo', 'meta-llama/Llama-3.1-70B-Instruct', 'Qwen/Qwen2.5-72B-Instruct-Turbo'],
-    key: () => env.ai.togetherKey,
-  },
-  fireworks: {
-    baseUrl: 'https://api.fireworks.ai/inference/v1',
-    models: ['accounts/fireworks/models/llama-v3p3-70b-instruct'],
-    key: () => env.ai.fireworksKey,
-  },
-  deepinfra: {
-    baseUrl: 'https://api.deepinfra.com/v1/openai',
-    models: ['meta-llama/Llama-3.3-70B-Instruct', 'meta-llama/Llama-3.1-70B-Instruct'],
-    key: () => env.ai.deepinfraKey,
-  },
-  perplexity: {
-    baseUrl: 'https://api.perplexity.ai',
-    models: ['llama-3.1-sonar-large-128k-online', 'llama-3.1-sonar-small-128k-online', 'llama-3.1-sonar-large-128k-chat'],
-    key: () => env.ai.perplexityKey,
-  },
-  cohere: {
-    baseUrl: 'https://api.cohere.ai/v1',
-    models: ['command-r-plus', 'command-r', 'command-light'],
-    key: () => env.ai.cohereKey,
   },
 }
 
