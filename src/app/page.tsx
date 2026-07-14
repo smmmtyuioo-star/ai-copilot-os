@@ -1,12 +1,35 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Workflow, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle } from 'lucide-react'
+import { Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Workflow, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch } from 'lucide-react'
 import { streamAiResponse } from '@/services/chat'
 import { db } from '@/lib/db'
 import type { Message, Conversation } from '@/types'
 import { formatDate, generateId } from '@/lib/utils'
 
 const URL_REGEX = /https?:\/\/[^\s]+/g
+
+const CONNECTOR_COMMANDS: Record<string, { pattern: RegExp; action: string; extract: (match: RegExpMatchArray) => any }> = {
+  github: {
+    pattern: /(?:list|show|my)\s+(?:repos|repositories)/i,
+    action: 'list-repos',
+    extract: () => ({}),
+  },
+  'create-repo': {
+    pattern: /(?:create|make|new)\s+(?:a\s+)?(?:repo|repository)\s+(?:called\s+|named\s+)?["']?([a-zA-Z0-9_-]+)["']?/i,
+    action: 'create-repo',
+    extract: (m: RegExpMatchArray) => ({ name: m[1] }),
+  },
+  'repo-info': {
+    pattern: /(?:info|details|about)\s+(?:repo|repository)\s+["']?([a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+)["']?/i,
+    action: 'get-repo',
+    extract: (m: RegExpMatchArray) => ({ repo: m[1] }),
+  },
+  'github-user': {
+    pattern: /(?:who\s+)?(?:am\s+i|my\s+(?:github\s+)?(?:info|profile|account|details))/i,
+    action: 'user-info',
+    extract: () => ({}),
+  },
+}
 
 const THINKING_STAGES = ['Analyzing', 'Thinking', 'Building', 'Processing', 'Researching', 'Crafting']
 
@@ -70,6 +93,46 @@ export default function HomePage() {
     if (activeConv === id) { setActiveConv(null); setMessages([]) }
   }
 
+  async function executeConnector(userMessage: string): Promise<string | null> {
+    try {
+      const connectors = JSON.parse(localStorage.getItem('ac_connectors') || '[]') as any[]
+      for (const cmd of Object.values(CONNECTOR_COMMANDS)) {
+        const match = userMessage.match(cmd.pattern)
+        if (match) {
+          const connector = connectors.find((c: any) => c.provider === 'github' && c.status === 'connected')
+          if (!connector) return 'To use GitHub commands, add and connect your GitHub connector first:\n1. Go to Connectors page\n2. Add GitHub with your personal access token\n3. Test the connection'
+
+          const params = cmd.extract(match)
+          const res = await fetch('/api/connectors/execute', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider: 'github', action: cmd.action, params, credentials: connector.config }),
+          })
+          const result = await res.json()
+          if (!result.success) return `GitHub error: ${result.error}`
+          return formatConnectorResult(cmd.action, result.data)
+        }
+      }
+    } catch { /* not a connector command */ }
+    return null
+  }
+
+  function formatConnectorResult(action: string, data: any): string {
+    switch (action) {
+      case 'list-repos':
+        return `**Your Repositories (${data.length})**\n\n${data.slice(0, 20).map((r: any) => `• **${r.name}** ${r.private ? '🔒' : '🌍'} ${r.language || ''}\n  ${r.description || ''}\n  ${r.url}`).join('\n\n')}`
+      case 'create-repo':
+        return `✅ **Repository created!**\n\n**${data.full_name}**\n${data.url}\n\`git clone ${data.clone_url}\``
+      case 'get-repo':
+        return `**${data.full_name}**\n${data.description || ''}\n\n⭐ Stars: ${data.stars} | 🍴 Forks: ${data.forks} | ⚠️ Issues: ${data.open_issues}\n🔤 Language: ${data.language}\n${data.url}`
+      case 'create-file':
+        return `✅ **File committed!**\n\nCommit: \`${data.commit.slice(0, 7)}\`\nMessage: ${data.message}\n${data.url}`
+      case 'user-info':
+        return `**GitHub Profile**\n\n👤 **${data.name || data.login}** (@${data.login})\n📧 ${data.email || 'No public email'}\n📦 Public repos: ${data.public_repos}\n👥 Followers: ${data.followers}`
+      default:
+        return JSON.stringify(data, null, 2)
+    }
+  }
+
   async function handleSend() {
     if (!input.trim() || streaming) return
     let convId = activeConv
@@ -90,7 +153,24 @@ export default function HomePage() {
     }
     setMessages(prev => [...prev, userMsg])
     await db.addMessage(userMsg)
-    setInput(''); setStreaming(true); setStreamContent('')
+    setInput('')
+    setStreaming(true)
+    setStreamContent('')
+
+    // Check for connector commands first
+    const connectorResult = await executeConnector(input)
+    if (connectorResult) {
+      setStreamContent(connectorResult)
+      const asstMsg: Message = {
+        id: generateId(), conversation_id: convId, role: 'assistant',
+        content: connectorResult, created_at: new Date().toISOString(),
+      }
+      await db.addMessage(asstMsg)
+      setMessages(prev => [...prev, asstMsg])
+      setStreaming(false)
+      setStreamContent('')
+      return
+    }
 
     const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
     const fullResponse = await streamAiResponse(history, 'llama-3.3-70b-versatile',
