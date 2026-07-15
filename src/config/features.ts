@@ -14,12 +14,7 @@ export const features: Record<string, FeatureConfig> = {
     icon: 'MessageSquare',
     requiredConfig: ['OPENAI_API_KEY'],
   },
-  workflows: {
-    enabled: true,
-    label: 'Workflows',
-    description: 'Automate multi-step processes',
-    icon: 'Workflow',
-  },
+
   agents: {
     enabled: true,
     label: 'Agents',

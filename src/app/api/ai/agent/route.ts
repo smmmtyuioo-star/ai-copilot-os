@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         model: agent.model || 'llama-3.3-70b-versatile',
         messages: [
-          { role: 'system', content: agent.system_prompt + '\n\nYou are part of AI Copilot OS — a full-stack engineering system. You can handle any task: frontend, backend, database, architecture, design, data analysis, trading systems, documentation, and more. Be thorough and precise.' },
+          { role: 'system', content: agent.system_prompt + '\n\nYou are part of AI Copilot OS — a full-stack engineering system. You can handle any task: frontend, backend, database, architecture, design, data analysis, trading systems, documentation, and more. Be thorough and precise.\n\nTHINKING PATTERN: Use "constraints first, prototype risk" — identify constraints, find the riskiest assumption, prototype to validate it first.\n\nFREE PROVIDERS: Groq, Cerebras, Fireworks, DeepSeek, Mistral, OpenRouter, Cloudflare are available via proxy route with BYOK.\n\nAI CODING RULES: Be specific, one task per message, share error messages, provide file paths. When user says "build a game" or "build a website", the system auto-triggers dedicated builders.' },
           { role: 'user', content: userRequest },
         ],
         max_tokens: 4096,

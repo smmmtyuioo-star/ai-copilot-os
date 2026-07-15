@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Puzzle, Download, Trash2, CheckCircle2, AlertCircle, Play, X, Loader2, Copy } from 'lucide-react'
+import { Puzzle, Download, Trash2, CheckCircle2, AlertCircle, Play, X, Loader2, Copy, Search, Plus } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Modal } from '@/components/ui'
 import { generateId } from '@/lib/utils'
 
@@ -132,6 +132,38 @@ export default function PluginsPage() {
           {message.text}
         </div>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Discover Plugins</CardTitle>
+          <CardDescription>Search for plugins in the marketplace</CardDescription>
+          <div className="relative mt-2">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input type="text" placeholder="Search plugins (e.g. code, translate, export...)"
+              onChange={e => {
+                const q = e.target.value.toLowerCase()
+                const results = document.getElementById('plugin-search-results')
+                if (results) {
+                  results.innerHTML = ''
+                  if (q.length < 2) return
+                  const matches = AVAILABLE_PLUGINS.filter(p => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.category.toLowerCase().includes(q))
+                  matches.slice(0, 5).forEach(p => {
+                    const div = document.createElement('div')
+                    div.className = 'flex items-center justify-between p-2 rounded-lg border border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    const installed = plugins.find(x => x.id === p.id)?.installed
+                    div.innerHTML = `<div class="flex items-center gap-2"><span>${p.icon}</span><span class="text-sm font-medium">${p.name}</span><span class="text-xs text-gray-400">${p.category}</span></div><button class="text-xs ${installed ? 'text-green-600' : 'text-blue-600 hover:underline'}">${installed ? 'Installed' : 'Install'}</button>`
+                    div.querySelector('button')?.addEventListener('click', () => { if (!installed) install(p.id); results.innerHTML = ''; (e.target as HTMLInputElement).value = '' })
+                    results.appendChild(div)
+                  })
+                  if (matches.length === 0) results.innerHTML = '<p class="text-xs text-gray-400 py-2 text-center">No plugins found</p>'
+                }
+              }}
+              className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm dark:border-gray-600 dark:bg-gray-700"
+            />
+          </div>
+          <div id="plugin-search-results" className="mt-2 space-y-1" />
+        </CardHeader>
+      </Card>
 
       <div className="flex gap-2 overflow-x-auto pb-2">
         <button onClick={() => setFilter('all')} className={`rounded-lg px-3 py-1.5 text-xs font-medium ${filter === 'all' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800'}`}>All</button>

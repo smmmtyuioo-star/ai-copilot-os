@@ -146,13 +146,18 @@ export function MultiAIProvider({ children }: { children: ReactNode }) {
     setState(prev => ({ ...prev, loading: true, error: null }))
     
     try {
-      const response = await fetch(`${config.baseUrl}${config.modelsEndpoint}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
+      const proxyRes = await fetch('/api/ai/proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: id, endpoint: '/models', apiKey }),
       })
-      
-      if (!response.ok) throw new Error(`Failed to connect: ${response.status}`)
-      
-      const data = await response.json()
+
+      if (!proxyRes.ok) {
+        const err = await proxyRes.json().catch(() => ({}))
+        throw new Error(err.error || `Failed to connect: ${proxyRes.status}`)
+      }
+
+      const data = await proxyRes.json()
       const models: AIModel[] = (data.data || data).map((m: any) => ({
         id: m.id,
         name: m.name || m.id,
@@ -211,13 +216,16 @@ export function MultiAIProvider({ children }: { children: ReactNode }) {
     
     try {
       const config = PROVIDER_CONFIGS[providerId]
-      const response = await fetch(`${config.baseUrl}${config.modelsEndpoint}`, {
-        headers: { 'Authorization': `Bearer ${provider.apiKey}` },
+      const proxyRes = await fetch('/api/ai/proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: providerId, endpoint: '/models', apiKey: provider.apiKey }),
       })
-      const data = await response.json()
+      if (!proxyRes.ok) return
+      const data = await proxyRes.json()
       const models: AIModel[] = (data.data || data).map((m: any) => ({
-        id: m.id, name: m.name || m.id, provider: config.name, providerId,
-        contextWindow: m.context_window || 4096, supportsStreaming: config.supportsStreaming,
+        id: m.id, name: m.name || m.id, provider: config?.name || providerId, providerId,
+        contextWindow: m.context_window || 4096, supportsStreaming: config?.supportsStreaming ?? true,
       }))
       
       setState(prev => {
@@ -244,27 +252,29 @@ export function MultiAIProvider({ children }: { children: ReactNode }) {
       ...params.messages,
     ]
     
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    const proxyRes = await fetch('/api/ai/proxy', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${provider.apiKey}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: params.model,
-        messages,
-        temperature: params.temperature ?? 0.7,
-        max_tokens: params.maxTokens ?? 4096,
-        stream: false,
+        provider: params.providerId,
+        endpoint: '/chat/completions',
+        apiKey: provider.apiKey,
+        body: {
+          model: params.model,
+          messages,
+          temperature: params.temperature ?? 0.7,
+          max_tokens: params.maxTokens ?? 4096,
+          stream: false,
+        },
       }),
     })
     
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      throw new Error(`${config.name} API error: ${err.error?.message || response.statusText}`)
+    if (!proxyRes.ok) {
+      const err = await proxyRes.json().catch(() => ({}))
+      throw new Error(`${config.name} API error: ${err.error?.message || proxyRes.statusText}`)
     }
     
-    const data = await response.json()
+    const data = await proxyRes.json()
     return {
       content: data.choices[0]?.message?.content || '',
       usage: data.usage,
@@ -303,26 +313,28 @@ export function MultiAIProvider({ children }: { children: ReactNode }) {
       ...params.messages,
     ]
     
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    const proxyRes = await fetch('/api/ai/proxy', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${provider.apiKey}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: params.model,
-        messages,
-        temperature: params.temperature ?? 0.7,
-        max_tokens: params.maxTokens ?? 4096,
-        stream: true,
+        provider: params.providerId,
+        endpoint: '/chat/completions',
+        apiKey: provider.apiKey,
+        body: {
+          model: params.model,
+          messages,
+          temperature: params.temperature ?? 0.7,
+          max_tokens: params.maxTokens ?? 4096,
+          stream: true,
+        },
       }),
     })
     
-    if (!response.ok || !response.body) {
-      throw new Error(`Stream failed: ${response.status}`)
+    if (!proxyRes.ok || !proxyRes.body) {
+      throw new Error(`Stream failed: ${proxyRes.status}`)
     }
     
-    const reader = response.body.getReader()
+    const reader = proxyRes.body.getReader()
     const decoder = new TextDecoder()
     
     while (true) {

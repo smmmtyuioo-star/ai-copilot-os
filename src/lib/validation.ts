@@ -23,16 +23,6 @@ export const chatMessageSchema = z.object({
   model: z.string().optional(),
 })
 
-export const workflowSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100),
-  description: z.string().max(500).optional(),
-  nodes: z.array(z.object({
-    id: z.string(),
-    type: z.enum(['action', 'condition', 'loop', 'delay', 'parallel']),
-    config: z.record(z.string(), z.unknown()),
-    next: z.array(z.string()),
-  })),
-})
 
 export const apiKeySchema = z.object({
   name: z.string().min(1, 'Name is required').max(50),

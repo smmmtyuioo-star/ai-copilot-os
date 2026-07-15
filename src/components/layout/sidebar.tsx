@@ -4,9 +4,9 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  LayoutDashboard, MessageSquare, Workflow, Bot, Globe,
+  LayoutDashboard, MessageSquare, Bot, Globe,
   Brain, Plug, Puzzle, Network, Key, Settings, LogOut,
-  FileText, Wand2, Monitor, Play,
+  FileText, Wand2, Play,
 } from 'lucide-react'
 
 const navItems = [
@@ -14,8 +14,6 @@ const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/chat', label: 'Chat (Dashboard)', icon: MessageSquare },
   { href: '/build', label: 'Build Pipeline', icon: Play },
-  { href: '/preview', label: 'Live Preview', icon: Monitor },
-  { href: '/workflows', label: 'Workflows', icon: Workflow },
   { href: '/agents', label: 'Agents', icon: Bot },
   { href: '/skills', label: 'Skills', icon: Wand2 },
   { href: '/plugins', label: 'Plugins', icon: Puzzle },

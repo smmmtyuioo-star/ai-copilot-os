@@ -1,9 +1,10 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Plus, Trash2 } from 'lucide-react'
+import { Send, Bot, User, Plus, Trash2, Upload, Puzzle, Wand2, Paperclip } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import { streamAiResponse, saveMessage, getMessages, getConversations, createConversation, deleteConversation } from '@/services/chat'
+import { getActiveCredentialId } from '@/lib/credentials'
 import type { Conversation, Message } from '@/types'
 import { formatDate, cn } from '@/lib/utils'
 
@@ -18,11 +19,23 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false)
   const [thinkStage, setThinkStage] = useState(0)
   const [streamContent, setStreamContent] = useState('')
+  const [showAttach, setShowAttach] = useState(false)
+  const attachRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (user) loadConversations()
   }, [user])
+
+  useEffect(() => {
+    if (showAttach) {
+      const handler = (e: MouseEvent) => {
+        if (attachRef.current && !attachRef.current.contains(e.target as Node)) setShowAttach(false)
+      }
+      document.addEventListener('mousedown', handler)
+      return () => document.removeEventListener('mousedown', handler)
+    }
+  }, [showAttach])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -63,6 +76,33 @@ export default function ChatPage() {
     }
   }
 
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files
+    if (!files) return
+    Array.from(files).forEach(file => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const content = reader.result as string
+        if (file.type.startsWith('image/')) {
+          setInput(prev => prev + `\n[Attached image: ${file.name} — text preview not available, requires vision model]\n`)
+        } else if (file.type.startsWith('video/')) {
+          setInput(prev => prev + `\n[Attached video: ${file.name} — transcript requires video processing API]\n`)
+        } else {
+          setInput(prev => prev + `\n[Attached: ${file.name}]\n${content.slice(0, 50000)}\n`)
+        }
+      }
+      if (file.type.startsWith('text/') || file.type.includes('json') || file.name.endsWith('.md') || file.name.endsWith('.csv')) {
+        reader.readAsText(file)
+      } else if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+        reader.readAsDataURL(file)
+      } else {
+        reader.readAsText(file)
+      }
+    })
+    setShowAttach(false)
+    e.target.value = ''
+  }
+
   async function handleSend() {
     if (!input.trim() || !user || streaming) return
 
@@ -86,7 +126,7 @@ export default function ChatPage() {
     setStreaming(true)
     setStreamContent('')
 
-    await saveMessage(userMsg)
+    await saveMessage(userMsg, getActiveCredentialId() || undefined)
 
     const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
 
@@ -108,7 +148,7 @@ export default function ChatPage() {
         content: fullResponse,
         created_at: new Date().toISOString(),
       }
-      await saveMessage(assistantMsg)
+      await saveMessage(assistantMsg, getActiveCredentialId() || undefined)
       setMessages(prev => [...prev, assistantMsg])
     }
     setStreaming(false)
@@ -200,6 +240,26 @@ export default function ChatPage() {
 
         <div className="border-t border-gray-200 p-4 dark:border-gray-700">
           <div className="flex gap-2">
+            <div ref={attachRef} className="relative">
+              <button onClick={() => setShowAttach(!showAttach)} disabled={streaming}
+                className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-500 hover:text-gray-700 disabled:opacity-50">
+                <Plus className="h-4 w-4" />
+              </button>
+              {showAttach && (
+                <div className="absolute bottom-full left-0 mb-2 w-56 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl overflow-hidden">
+                  <label className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer text-sm">
+                    <Upload className="h-4 w-4 text-blue-500" /> Upload File
+                    <input type="file" multiple onChange={handleFileUpload} className="hidden" />
+                  </label>
+                  <button onClick={() => { window.location.href = '/plugins'; setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
+                    <Puzzle className="h-4 w-4 text-purple-500" /> Plugins
+                  </button>
+                  <button onClick={() => { window.location.href = '/skills'; setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
+                    <Wand2 className="h-4 w-4 text-green-500" /> Skills
+                  </button>
+                </div>
+              )}
+            </div>
             <input
               value={input}
               onChange={e => setInput(e.target.value)}

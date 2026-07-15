@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Workflow, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch } from 'lucide-react'
+import { Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch, Paperclip, Code, Wand2, Upload, File, Video } from 'lucide-react'
 import { streamAiResponse } from '@/services/chat'
 import { db } from '@/lib/db'
 import type { Message, Conversation } from '@/types'
@@ -8,6 +8,16 @@ import { formatDate, generateId } from '@/lib/utils'
 
 const URL_REGEX = /https?:\/\/[^\s]+/g
 const BUILD_COMMAND = /^\/build\s+(.+)$/i
+const GAME_TRIGGERS = [
+  /^(?:build|make|create)\s+(?:a\s+)?(?:game|arcade|video\s*game)/i,
+  /^(?:build|make|create)\s+(?:a\s+)?(?:snake|tetris|pong|platformer|shooter|puzzle|rpg|clicker|runner)/i,
+  /(?:build|make|create)\s+(?:a\s+)?(?:game|video\s*game)\s+(?:called|named)?\s*["']?([^"']+)/i,
+]
+const WEBSITE_TRIGGERS = [
+  /^(?:build|make|create|generate)\s+(?:a\s+)?(?:website|site|web\s*page|landing\s*page|landing)/i,
+  /^(?:build|make|create|generate)\s+(?:a\s+)?(?:portfolio|blog|business\s*site|ecommerce|store)/i,
+  /^(?:build|make|create)\s+(?:a\s+)?(?:site|website)\s+(?:for|called|named)?\s*["']?([^"']+)/i,
+]
 
 const CONNECTOR_COMMANDS: Record<string, { pattern: RegExp; action: string; extract: (match: RegExpMatchArray) => any }> = {
   github: {
@@ -46,6 +56,8 @@ export default function HomePage() {
   const [sidebar, setSidebar] = useState(false)
   const [dark, setDark] = useState(false)
   const [urlPreview, setUrlPreview] = useState<{ url: string; title: string; loading: boolean; error: string } | null>(null)
+  const [showAttach, setShowAttach] = useState(false)
+  const attachRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -56,6 +68,16 @@ export default function HomePage() {
     }
     loadConversations()
   }, [])
+
+  useEffect(() => {
+    if (showAttach) {
+      const handler = (e: MouseEvent) => {
+        if (attachRef.current && !attachRef.current.contains(e.target as Node)) setShowAttach(false)
+      }
+      document.addEventListener('mousedown', handler)
+      return () => document.removeEventListener('mousedown', handler)
+    }
+  }, [showAttach])
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, streamContent])
 
@@ -95,6 +117,50 @@ export default function HomePage() {
     if (activeConv === id) { setActiveConv(null); setMessages([]) }
   }
 
+  async function executeAutoAgent(userMessage: string): Promise<string | null> {
+    try {
+      const agents = JSON.parse(localStorage.getItem('ac_agents') || '[]') as any[]
+      const activeAgents = agents.filter((a: any) => a.status !== 'error')
+      if (activeAgents.length === 0) return null
+
+      const lower = userMessage.toLowerCase()
+      const matched = activeAgents.find((a: any) => {
+        const role = (a.role || a.name || '').toLowerCase()
+        if (lower.includes('code') || lower.includes('build') || lower.includes('implement')) return role.includes('code-generator') || role.includes('api-builder')
+        if (lower.includes('test') || lower.includes('unit') || lower.includes('coverage')) return role.includes('test-generator')
+        if (lower.includes('security') || lower.includes('vulnerability') || lower.includes('audit')) return role.includes('security-reviewer')
+        if (lower.includes('research') || lower.includes('search') || lower.includes('find')) return role.includes('research')
+        if (lower.includes('architect') || lower.includes('design') || lower.includes('plan')) return role.includes('architecture-designer') || role.includes('requirement-planner')
+        return false
+      })
+
+      if (!matched) return null
+
+      const response = await fetch('/api/ai/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agent: {
+            name: matched.name,
+            role: matched.role,
+            model: matched.model || 'llama-3.3-70b-versatile',
+            system_prompt: matched.systemPrompt || matched.system_prompt || (matched.role ? `${matched.role} agent` : 'Helpful agent'),
+            tools: matched.tools || [],
+          },
+          request: userMessage,
+        }),
+      })
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        return `Agent triggered but API error: ${err.error || 'Unknown error'}`
+      }
+      const result = await response.json()
+      return `**${matched.name || matched.role}** auto-triggered:\n\n${result.output || 'Agent completed its task.'}`
+    } catch {
+      return null
+    }
+  }
+
   async function executeConnector(userMessage: string): Promise<string | null> {
     try {
       const connectors = JSON.parse(localStorage.getItem('ac_connectors') || '[]') as any[]
@@ -128,6 +194,40 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     localStorage.setItem('ac_build_prompt', prompt)
     window.location.href = '/build'
     return `🚀 Starting build pipeline for: **${prompt}**\n\nRedirecting to Build Pipeline with live preview...`
+  }
+
+  async function executeGameBuilder(userMessage: string): Promise<string | null> {
+    const matched = GAME_TRIGGERS.some(r => r.test(userMessage.trim()))
+    if (!matched) return null
+    const desc = userMessage.trim().length > 150 ? userMessage.trim().slice(0, 150) : userMessage.trim()
+    try {
+      const res = await fetch('/api/build/game', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: desc }),
+      })
+      const data = await res.json()
+      if (!data.success) return `**🎮 Game Builder**\n\nFailed: ${data.error || 'Unknown error'}`
+      return `**🎮 Game Built: ${data.title}**\n\n${data.summary}\n\n\`\`\`html\n${data.code}\n\`\`\`\n\n---\n_Send this to someone or save it as an HTML file to play!_`
+    } catch {
+      return '**🎮 Game Builder**\n\nFailed to reach build service.'
+    }
+  }
+
+  async function executeWebsiteBuilder(userMessage: string): Promise<string | null> {
+    const matched = WEBSITE_TRIGGERS.some(r => r.test(userMessage.trim()))
+    if (!matched) return null
+    const desc = userMessage.trim().length > 150 ? userMessage.trim().slice(0, 150) : userMessage.trim()
+    try {
+      const res = await fetch('/api/build/website', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: desc }),
+      })
+      const data = await res.json()
+      if (!data.success) return `**🌐 Website Builder**\n\nFailed: ${data.error || 'Unknown error'}`
+      return `**🌐 Website Built: ${data.title}**\n\n${data.summary}\n\n\`\`\`html\n${data.code}\n\`\`\`\n\n---\n_Open this HTML file in any browser to see your site!_`
+    } catch {
+      return '**🌐 Website Builder**\n\nFailed to reach build service.'
+    }
   }
 
   function formatConnectorResult(action: string, data: any): string {
@@ -178,6 +278,51 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
       const asstMsg: Message = {
         id: generateId(), conversation_id: convId, role: 'assistant',
         content: buildResult, created_at: new Date().toISOString(),
+      }
+      await db.addMessage(asstMsg)
+      setMessages(prev => [...prev, asstMsg])
+      setStreaming(false)
+      setStreamContent('')
+      return
+    }
+
+    // Check for game builder trigger
+    const gameResult = await executeGameBuilder(input)
+    if (gameResult) {
+      setStreamContent(gameResult)
+      const asstMsg: Message = {
+        id: generateId(), conversation_id: convId, role: 'assistant',
+        content: gameResult, created_at: new Date().toISOString(),
+      }
+      await db.addMessage(asstMsg)
+      setMessages(prev => [...prev, asstMsg])
+      setStreaming(false)
+      setStreamContent('')
+      return
+    }
+
+    // Check for website builder trigger
+    const websiteResult = await executeWebsiteBuilder(input)
+    if (websiteResult) {
+      setStreamContent(websiteResult)
+      const asstMsg: Message = {
+        id: generateId(), conversation_id: convId, role: 'assistant',
+        content: websiteResult, created_at: new Date().toISOString(),
+      }
+      await db.addMessage(asstMsg)
+      setMessages(prev => [...prev, asstMsg])
+      setStreaming(false)
+      setStreamContent('')
+      return
+    }
+
+    // Check for auto-trigger agents
+    const agentResult = await executeAutoAgent(input)
+    if (agentResult) {
+      setStreamContent(agentResult)
+      const asstMsg: Message = {
+        id: generateId(), conversation_id: convId, role: 'assistant',
+        content: agentResult, created_at: new Date().toISOString(),
       }
       await db.addMessage(asstMsg)
       setMessages(prev => [...prev, asstMsg])
@@ -241,6 +386,34 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     }
   }
 
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files
+    if (!files) return
+    Array.from(files).forEach(file => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const content = reader.result as string
+        if (file.type.startsWith('image/')) {
+          setInput(prev => prev + `\n[Attached image: ${file.name} — text preview not available, requires vision model]\n`)
+        } else if (file.type.startsWith('video/')) {
+          setInput(prev => prev + `\n[Attached video: ${file.name} — transcript requires video processing API]\n`)
+        } else {
+          setInput(prev => prev + `\n[Attached: ${file.name}]\n${content.slice(0, 50000)}\n`)
+        }
+      }
+      if (file.type.startsWith('text/') || file.type.includes('json') || file.type.includes('javascript') || file.name.endsWith('.md') || file.name.endsWith('.csv')) {
+        reader.readAsText(file)
+      } else if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+        // readAsDataURL needed to trigger onload, but content discarded — see limitation below
+        reader.readAsDataURL(file)
+      } else {
+        reader.readAsText(file)
+      }
+    })
+    setShowAttach(false)
+    e.target.value = ''
+  }
+
   async function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
@@ -274,8 +447,6 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                 { href: '/', label: 'Chat', icon: MessageSquare },
                 { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
                 { href: '/build', label: 'Build Pipeline', icon: Play },
-                { href: '/preview', label: 'Live Preview', icon: Monitor },
-                { href: '/workflows', label: 'Workflows', icon: Workflow },
                 { href: '/agents', label: 'Agents', icon: Bot },
               ].map(item => {
                 const Icon = item.icon
@@ -408,6 +579,30 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
         {/* Input */}
         <div className="border-t border-gray-200 dark:border-gray-800 p-4">
           <div className="mx-auto max-w-3xl flex gap-2">
+            <div ref={attachRef} className="relative">
+              <button onClick={() => setShowAttach(!showAttach)} disabled={streaming}
+                className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 text-gray-500 hover:text-gray-700 hover:border-gray-400 disabled:opacity-50">
+                <Plus className="h-4 w-4" />
+              </button>
+              {showAttach && (
+                <div className="absolute bottom-full left-0 mb-2 w-56 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl overflow-hidden">
+                  <label className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer text-sm">
+                    <Upload className="h-4 w-4 text-blue-500" /> Upload File / Image
+                    <input type="file" multiple onChange={handleFileUpload} className="hidden" />
+                  </label>
+                  <button onClick={() => { window.location.href = '/plugins'; setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
+                    <Puzzle className="h-4 w-4 text-purple-500" /> Plugins
+                    <span className="ml-auto text-xs text-gray-400">{(() => { try { return JSON.parse(localStorage.getItem('ac_plugins') || '[]').length } catch { return 0 } })()} installed</span>
+                  </button>
+                  <button onClick={() => { window.location.href = '/skills'; setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
+                    <Wand2 className="h-4 w-4 text-green-500" /> Skills
+                  </button>
+                  <button onClick={() => { window.location.href = '/agents'; setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
+                    <Bot className="h-4 w-4 text-amber-500" /> Agents
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="flex-1 relative">
               <input
                 value={input} onChange={e => handleInputChange(e.target.value)} onKeyDown={handleKeyDown}

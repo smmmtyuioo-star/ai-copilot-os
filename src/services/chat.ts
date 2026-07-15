@@ -69,7 +69,7 @@ export async function getMessages(conversationId: string): Promise<Message[]> {
     .map(m => ({ id: m.id, conversation_id: m.conversationId, role: m.role as Message['role'], content: m.content, created_at: m.createdAt }))
 }
 
-export async function saveMessage(message: Omit<Message, 'created_at'>): Promise<Message> {
+export async function saveMessage(message: Omit<Message, 'created_at'>, credentialId?: string): Promise<Message> {
   const msg: Message = { ...message, created_at: new Date().toISOString() }
   if (hasSupabase) {
     const supabase = getSupabase()
@@ -79,7 +79,7 @@ export async function saveMessage(message: Omit<Message, 'created_at'>): Promise
       return msg
     }
   }
-  localStore.messages.add({ id: msg.id, conversationId: msg.conversation_id, role: msg.role, content: msg.content, createdAt: msg.created_at })
+  localStore.messages.add({ id: msg.id, conversationId: msg.conversation_id, role: msg.role, content: msg.content, createdAt: msg.created_at, credentialId })
   return msg
 }
 

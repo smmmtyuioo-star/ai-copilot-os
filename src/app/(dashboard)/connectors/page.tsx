@@ -70,23 +70,29 @@ export default function ConnectorsPage() {
           updateConnector(id, 'error', `GitHub: ${response.status} ${response.statusText}`)
         }
       } else if (connector.provider === 'groq') {
-        response = await fetch('https://api.groq.com/openai/v1/models', {
-          headers: { Authorization: `Bearer ${connector.config.apiKey}` },
+        response = await fetch('/api/ai/proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: 'groq', endpoint: '/models', apiKey: connector.config.apiKey }),
         })
         if (response.ok) {
           const data = await response.json()
           updateConnector(id, 'connected', `Groq: ${data.data?.length || 0} models available`)
         } else {
-          updateConnector(id, 'error', `Groq: ${response.status} ${response.statusText}`)
+          const err = await response.json().catch(() => ({}))
+          updateConnector(id, 'error', `Groq: ${err.error || response.statusText}`)
         }
       } else if (connector.provider === 'openai') {
-        response = await fetch('https://api.openai.com/v1/models', {
-          headers: { Authorization: `Bearer ${connector.config.apiKey}` },
+        response = await fetch('/api/ai/proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider: 'openai', endpoint: '/models', apiKey: connector.config.apiKey }),
         })
         if (response.ok) {
           updateConnector(id, 'connected', 'OpenAI: Connected successfully')
         } else {
-          updateConnector(id, 'error', `OpenAI: ${response.status} ${response.statusText}`)
+          const err = await response.json().catch(() => ({}))
+          updateConnector(id, 'error', `OpenAI: ${err.error || response.statusText}`)
         }
       } else {
         updateConnector(id, 'connected', `${connector.name}: Configured (test endpoint not available)`)

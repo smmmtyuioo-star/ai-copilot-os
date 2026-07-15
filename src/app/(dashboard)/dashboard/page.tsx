@@ -3,26 +3,25 @@ import { useState, useEffect } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import { localStore, hasSupabase } from '@/lib/storage'
-import { MessageSquare, Workflow, Bot, Brain, Activity, Users } from 'lucide-react'
+import { MessageSquare, Bot, Brain, Activity, Users, Zap } from 'lucide-react'
 
 export default function DashboardPage() {
   const { user } = useAuth()
-  const [stats, setStats] = useState({ conversations: 0, workflows: 0, agents: 0, memories: 0 })
+  const [stats, setStats] = useState({ conversations: 0, agents: 0, memories: 0 })
 
   useEffect(() => {
     const convs = localStore.conversations.items.length
-    const wfs = localStore.workflows.items.length
     const agents = localStore.agents.items.length
     const mems = localStore.memories.items.length
-    setStats({ conversations: convs, workflows: wfs, agents: agents, memories: mems })
+    setStats({ conversations: convs, agents: agents, memories: mems })
   }, [])
 
   const statItems = [
     { icon: MessageSquare, label: 'Conversations', value: String(stats.conversations), desc: 'Total chat conversations' },
-    { icon: Workflow, label: 'Active Workflows', value: String(stats.workflows), desc: 'Running automations' },
     { icon: Bot, label: 'AI Agents', value: String(stats.agents), desc: 'Configured agents' },
     { icon: Brain, label: 'Memory Entries', value: String(stats.memories), desc: 'Stored memories' },
     { icon: Activity, label: 'API Calls', value: 'N/A', desc: 'Today' },
+    { icon: Zap, label: 'Active Tasks', value: String(stats.agents), desc: 'Running automations' },
     { icon: Users, label: 'Active Users', value: '1', desc: 'Current workspace' },
   ]
 
@@ -66,7 +65,7 @@ export default function DashboardPage() {
           <CardContent className="space-y-3">
             {[
               { label: 'New Chat', href: '/chat', desc: 'Start an AI conversation' },
-              { label: 'Create Workflow', href: '/workflows', desc: 'Automate a process' },
+              { label: 'Build Pipeline', href: '/build', desc: 'Build from scratch' },
               { label: 'Configure Agents', href: '/agents', desc: 'Set up multi-agent pipeline' },
               { label: 'Add Connector', href: '/connectors', desc: 'Connect external service' },
             ].map((item, i) => (

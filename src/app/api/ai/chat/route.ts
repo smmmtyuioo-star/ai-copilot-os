@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { env } from '@/config/env'
+import { runAgentLoop } from '@/services/agent-loop'
+import { verify } from '@/services/verification'
+import { classifyIntent } from '@/services/intent-classifier'
+import { selectTier } from '@/services/tier-router'
 
 const PROVIDERS: Record<string, { baseUrl: string; key: () => string; envVar: string; models: string[] }> = {
   groq: {
@@ -80,17 +84,82 @@ MATH: Algebra through calculus, linear algebra, probability, algorithmic complex
 
 GENERAL: Broad knowledge of history, science, geography, culture, technology.
 
+THINKING PATTERN: Use "constraints first, prototype risk" thinking. Before proposing a solution: (1) identify all constraints — technical, business, time, skill, environment, (2) identify the riskiest assumption in any approach, (3) prototype to validate that risk first. Give concrete, actionable plans starting from constraints. Prioritize simplicity and iteration over perfect upfront design.
+
+FREE LLM PROVIDERS: The system supports multiple free or low-cost providers that can be used via the /api/ai/proxy route or configured in connectors. Available: Groq (free tier — llama-3.3-70b, mixtral, gemma), Cerebras (fast inference), Fireworks AI, DeepSeek, Mistral, OpenRouter (gateway to GPT-4o, Claude, Gemini), Cloudflare Workers AI. Users can bring their own keys via the connectors page. When recommending an approach, suggest the most cost-effective model that fits the task complexity.
+
+AI CODING RULES: Users interact through a chat interface. To get the best results: be specific about goals and constraints, define the tech stack upfront, ask for exactly one task per message, share error messages verbatim, provide exact file paths when discussing code, use /build command for project scaffolding. When the user says "build a game" or "build a website", the system auto-triggers the dedicated game builder or website builder to generate a complete, playable HTML file.
+
 Whenever the user asks a question or requests a task, use ALL relevant capabilities to produce the best possible answer. Be concise, accurate, and thorough. If you need to search for current information, say so. Never refuse a technical challenge — figure it out step by step.`
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages, model, provider: explicitProvider, stream: doStream = true, temperature, max_tokens } = await request.json()
+    const { messages, model, provider: explicitProvider, stream: doStream = true, temperature, max_tokens, tools, user_id } = await request.json()
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages are required' }, { status: 400 })
     }
 
     const modelToUse = model || env.ai.defaultModel
+
+    if (tools && Array.isArray(tools) && tools.length > 0) {
+      const lastUserMsg = messages.filter(m => m.role === 'user').pop()?.content || ''
+      const classification = await classifyIntent(lastUserMsg)
+      const tierConfig = selectTier({
+        intent: classification.intent,
+        messageLength: lastUserMsg.length,
+        explicitModel: model,
+      })
+
+      const result = await runAgentLoop({
+        messages, tools, model: tierConfig.model,
+        temperature: temperature ?? tierConfig.temperature,
+        maxTokens: max_tokens ?? tierConfig.maxTokens,
+        maxTurns: tierConfig.maxTurns,
+        userId: user_id,
+      })
+
+      if (!result.success) {
+        return NextResponse.json({ error: result.error || 'Agent loop failed' }, { status: 500 })
+      }
+
+      let content = result.content
+
+      if (tierConfig.useVerification && lastUserMsg) {
+        const verification = await verify({
+          response: content,
+          originalRequest: lastUserMsg,
+          intent: classification.intent,
+          expectedLength: undefined,
+        })
+        if (!verification.passed) {
+          content += '\n\n' + verification.issues.map(i => `[Note: ${i.detail}]`).join('\n')
+        }
+      }
+
+      if (!doStream) {
+        return NextResponse.json({
+          choices: [{ message: { role: 'assistant', content } }],
+        })
+      }
+
+      const encoder = new TextEncoder()
+      const stream = new ReadableStream({
+        start(controller) {
+          const lines = content.match(/.{1,100}/g) || [content]
+          for (const line of lines) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: line } }] })}\n\n`))
+          }
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        },
+      })
+
+      return new Response(stream, {
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+      })
+    }
+
     let providerName = explicitProvider || detectProvider(modelToUse) || 'groq'
 
     const fallbackChain = ['groq', 'cerebras', 'fireworks', 'deepseek', 'mistral', 'openrouter', 'cloudflare']
