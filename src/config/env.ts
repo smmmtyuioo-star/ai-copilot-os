@@ -11,6 +11,7 @@ export const env = {
     mistralKey: process.env.MISTRAL_API_KEY || '',
     openrouterKey: process.env.OPENROUTER_API_KEY || '',
     nvidiaKey: process.env.NVIDIA_API_KEY || '',
+    googleGeminiKey: process.env.GOOGLE_GEMINI_KEY || '',
     tavilyKey: process.env.TAVILY_API_KEY || '',
     googleSafeBrowsingKey: process.env.GOOGLE_SAFE_BROWSING_KEY || '',
     cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN || '',

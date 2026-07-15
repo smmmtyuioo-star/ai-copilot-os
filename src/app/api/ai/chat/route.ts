@@ -48,6 +48,18 @@ const PROVIDERS: Record<string, { baseUrl: string; key: () => string; envVar: st
     envVar: 'CLOUDFLARE_API_TOKEN',
     models: ['@cf/meta/llama-3.3-70b-instruct', '@cf/meta/llama-3.1-8b-instruct', '@cf/mistral/mistral-7b-instruct-v0.1', '@cf/deepseek/deepseek-r1-distill-qwen-32b'],
   },
+  nvidia: {
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    key: () => env.ai.nvidiaKey,
+    envVar: 'NVIDIA_API_KEY',
+    models: ['nvidia/llama-3.3-nvcf', 'mistralai/mistral-7b-instruct-v0.3', 'google/gemma-2-27b-it'],
+  },
+  gemini: {
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    key: () => env.ai.googleGeminiKey,
+    envVar: 'GOOGLE_GEMINI_KEY',
+    models: ['gemini-2.0-flash', 'gemini-2.0-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+  },
 }
 
 function detectProvider(model: string): string | null {
@@ -59,6 +71,8 @@ function detectProvider(model: string): string | null {
   if (model.startsWith('mistral-')) return 'mistral'
   if (model.startsWith('accounts/')) return 'fireworks'
   if (model.startsWith('@cf/')) return 'cloudflare'
+  if (model.startsWith('nvidia/') || model.startsWith('mistralai/')) return 'nvidia'
+  if (model.startsWith('gemini-')) return 'gemini'
   return null
 }
 
@@ -86,7 +100,7 @@ GENERAL: Broad knowledge of history, science, geography, culture, technology.
 
 THINKING PATTERN: Use "constraints first, prototype risk" thinking. Before proposing a solution: (1) identify all constraints — technical, business, time, skill, environment, (2) identify the riskiest assumption in any approach, (3) prototype to validate that risk first. Give concrete, actionable plans starting from constraints. Prioritize simplicity and iteration over perfect upfront design.
 
-FREE LLM PROVIDERS: The system supports multiple free or low-cost providers that can be used via the /api/ai/proxy route or configured in connectors. Available: Groq (free tier — llama-3.3-70b, mixtral, gemma), Cerebras (fast inference), Fireworks AI, DeepSeek, Mistral, OpenRouter (gateway to GPT-4o, Claude, Gemini), Cloudflare Workers AI. Users can bring their own keys via the connectors page. When recommending an approach, suggest the most cost-effective model that fits the task complexity.
+FREE LLM PROVIDERS: The system supports multiple free or low-cost providers. Available: Groq (free tier — llama-3.3-70b, mixtral, gemma), Cerebras (fast inference), Fireworks AI, DeepSeek, Mistral, OpenRouter (gateway to GPT-4o, Claude), Cloudflare Workers AI, NVIDIA (free tier — llama, mistral, gemma), Google Gemini (free tier — gemini-2.0-flash, gemini-1.5-flash/pro via GOOGLE_GEMINI_KEY). Users can bring their own keys via the connectors page. When recommending an approach, suggest the most cost-effective model that fits the task complexity — Gemini 2.0 Flash and Groq's Llama are excellent free options.
 
 AI CODING RULES: Users interact through a chat interface. To get the best results: be specific about goals and constraints, define the tech stack upfront, ask for exactly one task per message, share error messages verbatim, provide exact file paths when discussing code, use /build command for project scaffolding. When the user says "build a game" or "build a website", the system auto-triggers the dedicated game builder or website builder to generate a complete, playable HTML file.
 
@@ -162,7 +176,7 @@ export async function POST(request: NextRequest) {
 
     let providerName = explicitProvider || detectProvider(modelToUse) || 'groq'
 
-    const fallbackChain = ['groq', 'cerebras', 'fireworks', 'deepseek', 'mistral', 'openrouter', 'cloudflare']
+    const fallbackChain = ['groq', 'cerebras', 'fireworks', 'deepseek', 'mistral', 'openrouter', 'cloudflare', 'nvidia', 'gemini']
     const startIndex = fallbackChain.indexOf(providerName)
     const providersToTry = fallbackChain.slice(startIndex >= 0 ? startIndex : 0)
 

@@ -9,6 +9,8 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
   openrouter: 'https://openrouter.ai/api/v1',
   cerebras: 'https://api.cerebras.ai/v1',
   fireworks: 'https://api.fireworks.ai/inference/v1',
+  nvidia: 'https://integrate.api.nvidia.com/v1',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
 }
 
 export async function POST(request: NextRequest) {
