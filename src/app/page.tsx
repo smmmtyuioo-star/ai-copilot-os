@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch, Paperclip, Code, Wand2, Upload, File, Video, RefreshCw, Edit3, LogOut } from 'lucide-react'
+import { Search, Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch, Paperclip, Code, Wand2, Upload, File, Video, RefreshCw, Edit3, LogOut } from 'lucide-react'
 import { streamAiResponse } from '@/services/chat'
 import { db } from '@/lib/db'
 import type { Message, Conversation } from '@/types'
@@ -60,6 +60,9 @@ export default function HomePage() {
   const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile')
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
+  const [searchConv, setSearchConv] = useState('')
+  const [editingConv, setEditingConv] = useState<string | null>(null)
+  const [renameInput, setRenameInput] = useState('')
   const attachRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -113,6 +116,15 @@ export default function HomePage() {
     const msgs = await db.getMessages(id)
     setMessages(msgs)
     setSidebar(false)
+  }
+
+  async function submitRename(id: string) {
+    if (!renameInput.trim()) { setEditingConv(null); return }
+    const store = JSON.parse(localStorage.getItem('ac_conversations') || '[]') as any[]
+    const idx = store.findIndex((c: any) => c.id === id)
+    if (idx >= 0) { store[idx].title = renameInput; localStorage.setItem('ac_conversations', JSON.stringify(store)) }
+    setConversations(prev => prev.map(c => c.id === id ? { ...c, title: renameInput } : c))
+    setEditingConv(null)
   }
 
   async function handleSignOut() {
@@ -613,9 +625,41 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                   </a>
                 )
               })}
+              {conversations.length > 0 && (
+                <>
+                  <p className="px-3 py-1 mt-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Conversations</p>
+                  <div className="relative px-3 mb-1">
+                    <Search className="absolute left-5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+                    <input value={searchConv} onChange={e => setSearchConv(e.target.value)}
+                      placeholder="Search chats..." className="w-full rounded-md border border-gray-200 py-1 pl-6 pr-2 text-xs dark:border-gray-700 dark:bg-gray-800" />
+                  </div>
+                  {conversations.filter(c => !searchConv || c.title.toLowerCase().includes(searchConv.toLowerCase())).map(c => (
+                    <div key={c.id} className="group flex items-center gap-1 px-3 py-1.5">
+                      {editingConv === c.id ? (
+                        <input value={renameInput} onChange={e => setRenameInput(e.target.value)}
+                          onBlur={() => submitRename(c.id)} onKeyDown={e => { if (e.key === 'Enter') submitRename(c.id); if (e.key === 'Escape') setEditingConv(null) }}
+                          className="flex-1 rounded border border-blue-400 px-1.5 py-0.5 text-xs dark:bg-gray-700" autoFocus
+                          onClick={e => e.stopPropagation()} />
+                      ) : (
+                        <button onClick={() => { selectConversation(c.id); setSidebar(false) }}
+                          className={`flex-1 truncate text-left text-xs py-0.5 rounded px-1.5 ${activeConv === c.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'}`}>
+                          {c.title}
+                        </button>
+                      )}
+                      {editingConv !== c.id && (
+                        <div className="hidden group-hover:flex items-center gap-0.5">
+                          <button onClick={() => { setEditingConv(c.id); setRenameInput(c.title) }}
+                            className="text-gray-400 hover:text-blue-500"><Edit3 className="h-3 w-3" /></button>
+                          <button onClick={() => handleDelete(c.id)}
+                            className="text-gray-400 hover:text-red-500"><Trash2 className="h-3 w-3" /></button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
             <div className="border-t border-gray-200 p-3 space-y-2 dark:border-gray-800">
-              {conversations.length > 0 && <p className="text-xs text-gray-400 truncate">{conversations.length} conversations</p>}
               <button onClick={handleSignOut} className="flex items-center gap-2 text-xs text-gray-400 hover:text-red-500 w-full">
                 <LogOut className="h-3.5 w-3.5" /> Sign Out
               </button>

@@ -5,22 +5,42 @@ import { useAuth } from '@/hooks/useAuth'
 import { localStore, hasSupabase } from '@/lib/storage'
 import { MessageSquare, Bot, Brain, Activity, Users, Zap } from 'lucide-react'
 
+function getApiCallCount(): number {
+  if (typeof window === 'undefined') return 0
+  try {
+    const raw = localStorage.getItem('ac_telemetry')
+    if (!raw) return 0
+    const records = JSON.parse(raw)
+    return Array.isArray(records) ? records.length : 0
+  } catch { return 0 }
+}
+
 export default function DashboardPage() {
   const { user } = useAuth()
-  const [stats, setStats] = useState({ conversations: 0, agents: 0, memories: 0 })
+  const [stats, setStats] = useState({ conversations: 0, agents: 0, memories: 0, apiCalls: 0 })
+  const [refresh, setRefresh] = useState(0)
 
   useEffect(() => {
     const convs = localStore.conversations.items.length
     const agents = localStore.agents.items.length
     const mems = localStore.memories.items.length
-    setStats({ conversations: convs, agents: agents, memories: mems })
+    const apiCalls = getApiCallCount()
+    setStats({ conversations: convs, agents: agents, memories: mems, apiCalls })
+
+    const interval = setInterval(() => setRefresh(n => n + 1), 10000)
+    return () => clearInterval(interval)
+  }, [refresh])
+
+  useEffect(() => {
+    const apiCalls = getApiCallCount()
+    setStats(prev => ({ ...prev, apiCalls }))
   }, [])
 
   const statItems = [
     { icon: MessageSquare, label: 'Conversations', value: String(stats.conversations), desc: 'Total chat conversations' },
     { icon: Bot, label: 'AI Agents', value: String(stats.agents), desc: 'Configured agents' },
     { icon: Brain, label: 'Memory Entries', value: String(stats.memories), desc: 'Stored memories' },
-    { icon: Activity, label: 'API Calls', value: 'N/A', desc: 'Today' },
+    { icon: Activity, label: 'API Calls', value: String(stats.apiCalls), desc: 'Total tool calls' },
     { icon: Zap, label: 'Active Tasks', value: String(stats.agents), desc: 'Running automations' },
     { icon: Users, label: 'Active Users', value: '1', desc: 'Current workspace' },
   ]
