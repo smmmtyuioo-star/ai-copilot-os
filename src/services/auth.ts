@@ -10,17 +10,28 @@ export interface AuthResult {
   error?: string
 }
 
+const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+interface StoredSession { user: User; expiresAt: number }
+
 function getLocalUser(): User | null {
   if (typeof window === 'undefined') return null
   try {
-    const data = localStorage.getItem('ac_user')
-    return data ? JSON.parse(data) : null
+    const raw = localStorage.getItem('ac_user')
+    if (!raw) return null
+    const session: StoredSession = JSON.parse(raw)
+    if (Date.now() > session.expiresAt) {
+      localStorage.removeItem('ac_user')
+      return null
+    }
+    return session.user
   } catch { return null }
 }
 
 function setLocalUser(user: User): void {
   if (typeof window === 'undefined') return
-  localStorage.setItem('ac_user', JSON.stringify(user))
+  const session: StoredSession = { user, expiresAt: Date.now() + SESSION_DURATION_MS }
+  localStorage.setItem('ac_user', JSON.stringify(session))
 }
 
 function clearLocalUser(): void {

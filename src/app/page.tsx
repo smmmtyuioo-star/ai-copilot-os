@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch, Paperclip, Code, Wand2, Upload, File, Video, RefreshCw, Edit3 } from 'lucide-react'
+import { Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch, Paperclip, Code, Wand2, Upload, File, Video, RefreshCw, Edit3, LogOut } from 'lucide-react'
 import { streamAiResponse } from '@/services/chat'
 import { db } from '@/lib/db'
 import type { Message, Conversation } from '@/types'
@@ -113,6 +113,11 @@ export default function HomePage() {
     const msgs = await db.getMessages(id)
     setMessages(msgs)
     setSidebar(false)
+  }
+
+  async function handleSignOut() {
+    localStorage.removeItem('ac_user')
+    window.location.href = '/auth/login'
   }
 
   async function handleDelete(id: string) {
@@ -609,8 +614,11 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                 )
               })}
             </div>
-            <div className="border-t border-gray-200 p-3 text-xs text-gray-400 dark:border-gray-800">
-              {conversations.length > 0 && <p className="truncate">{conversations.length} conversations</p>}
+            <div className="border-t border-gray-200 p-3 space-y-2 dark:border-gray-800">
+              {conversations.length > 0 && <p className="text-xs text-gray-400 truncate">{conversations.length} conversations</p>}
+              <button onClick={handleSignOut} className="flex items-center gap-2 text-xs text-gray-400 hover:text-red-500 w-full">
+                <LogOut className="h-3.5 w-3.5" /> Sign Out
+              </button>
             </div>
           </div>
           <div className="flex-1 bg-black/20" onClick={() => setSidebar(false)} />
