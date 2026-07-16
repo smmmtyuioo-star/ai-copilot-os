@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch, Paperclip, Code, Wand2, Upload, File, Video } from 'lucide-react'
+import { Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch, Paperclip, Code, Wand2, Upload, File, Video, RefreshCw, Edit3 } from 'lucide-react'
 import { streamAiResponse } from '@/services/chat'
 import { db } from '@/lib/db'
 import type { Message, Conversation } from '@/types'
@@ -58,6 +58,8 @@ export default function HomePage() {
   const [urlPreview, setUrlPreview] = useState<{ url: string; title: string; loading: boolean; error: string } | null>(null)
   const [showAttach, setShowAttach] = useState(false)
   const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile')
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
   const attachRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -247,6 +249,92 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
       default:
         return JSON.stringify(data, null, 2)
     }
+  }
+
+  async function handleRegenerate(msgId: string) {
+    const idx = messages.findIndex(m => m.id === msgId)
+    if (idx < 1) return
+    const prevMsgs = messages.slice(0, idx)
+    const convId = activeConv
+    if (!convId) return
+
+    setStreaming(true)
+    setStreamContent('')
+    const abortController = new AbortController()
+    abortRef.current = abortController
+    const history = prevMsgs.map(m => ({ role: m.role, content: m.content }))
+
+    const fullResponse = await streamAiResponse(
+      history, selectedModel,
+      (token) => setStreamContent(prev => prev + token),
+      (error) => { setStreamContent(`Error: ${error}`); setStreaming(false) },
+      abortController.signal,
+    )
+    if (abortRef.current === abortController) abortRef.current = null
+    if (fullResponse) {
+      const newMsg: Message = {
+        id: generateId(), conversation_id: convId, role: 'assistant',
+        content: fullResponse, created_at: new Date().toISOString(),
+      }
+      setMessages(prev => [...prev.slice(0, idx), newMsg])
+      await db.addMessage(newMsg)
+    }
+    setStreaming(false)
+    setStreamContent('')
+  }
+
+  function startEdit(msgId: string, content: string) {
+    setEditingMsgId(msgId)
+    setEditText(content)
+  }
+
+  async function submitEdit() {
+    if (!editingMsgId || !editText.trim()) return
+    const idx = messages.findIndex(m => m.id === editingMsgId)
+    if (idx < 0) { setEditingMsgId(null); return }
+
+    const convId = activeConv
+    if (!convId) { setEditingMsgId(null); return }
+
+    const editedMsg: Message = {
+      id: generateId(), conversation_id: convId, role: 'user',
+      content: editText, created_at: new Date().toISOString(),
+    }
+    const kept = messages.slice(0, idx)
+    setEditingMsgId(null)
+    setStreaming(true)
+    setStreamContent('')
+
+    const abortController = new AbortController()
+    abortRef.current = abortController
+    const history = [...kept, editedMsg].map(m => ({ role: m.role, content: m.content }))
+
+    const fullResponse = await streamAiResponse(
+      history, selectedModel,
+      (token) => setStreamContent(prev => prev + token),
+      (error) => { setStreamContent(`Error: ${error}`); setStreaming(false) },
+      abortController.signal,
+    )
+    if (abortRef.current === abortController) abortRef.current = null
+
+    const finalMsgs = [...kept, editedMsg]
+    if (fullResponse) {
+      const asstMsg: Message = {
+        id: generateId(), conversation_id: convId, role: 'assistant',
+        content: fullResponse, created_at: new Date().toISOString(),
+      }
+      finalMsgs.push(asstMsg)
+      await db.addMessage(asstMsg)
+    }
+    setMessages(finalMsgs)
+    await db.addMessage(editedMsg)
+    setStreaming(false)
+    setStreamContent('')
+  }
+
+  function cancelEdit() {
+    setEditingMsgId(null)
+    setEditText('')
   }
 
   function handleCancel() {
@@ -569,9 +657,37 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
             {messages.map(msg => (
               <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : ''}`}>
                 {msg.role !== 'user' && <Bot className="h-6 w-6 shrink-0 mt-1 text-blue-600" />}
-                <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
-                  <p className="mt-1 text-xs opacity-50">{formatDate(msg.created_at)}</p>
+                <div>
+                  <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
+                    {editingMsgId === msg.id ? (
+                      <div className="space-y-2">
+                        <textarea value={editText} onChange={e => setEditText(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 p-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                          rows={3} />
+                        <div className="flex gap-2">
+                          <button onClick={submitEdit} className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700">Save</button>
+                          <button onClick={cancelEdit} className="text-xs px-2 py-1 rounded bg-gray-300 text-gray-700 hover:bg-gray-400">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                    )}
+                    <p className="mt-1 text-xs opacity-50">{formatDate(msg.created_at)}</p>
+                  </div>
+                  <div className={`flex gap-1 mt-1 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+                    {msg.role === 'user' && editingMsgId !== msg.id && (
+                      <button onClick={() => startEdit(msg.id, msg.content)}
+                        className="text-xs text-gray-400 hover:text-blue-500 flex items-center gap-0.5">
+                        <Edit3 className="h-3 w-3" /> Edit
+                      </button>
+                    )}
+                    {msg.role !== 'user' && !streaming && (
+                      <button onClick={() => handleRegenerate(msg.id)}
+                        className="text-xs text-gray-400 hover:text-blue-500 flex items-center gap-0.5">
+                        <RefreshCw className="h-3 w-3" /> Regenerate
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

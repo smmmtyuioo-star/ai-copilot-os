@@ -23,8 +23,20 @@ const TYPES = [
   { id: 'note', label: 'Notes', icon: BookOpen },
 ]
 
+const STORAGE_KEY = 'ac_knowledge'
+
+function loadItems(): KnowledgeItem[] {
+  if (typeof window === 'undefined') return []
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') } catch { return [] }
+}
+
+function saveItems(items: KnowledgeItem[]) {
+  if (typeof window === 'undefined') return
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)) } catch {}
+}
+
 export default function KnowledgePage() {
-  const [items, setItems] = useState<KnowledgeItem[]>([])
+  const [items, setItems] = useState<KnowledgeItem[]>(loadItems)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [note, setNote] = useState('')
@@ -36,12 +48,16 @@ export default function KnowledgePage() {
       id: generateId(), type: 'note', title: note.slice(0, 60),
       content: note, tags: [], createdAt: new Date().toISOString(),
     }
-    setItems(prev => [item, ...prev])
+    const updated = [item, ...items]
+    setItems(updated)
+    saveItems(updated)
     setNote('')
   }
 
   function deleteItem(id: string) {
-    setItems(prev => prev.filter(i => i.id !== id))
+    const updated = items.filter(i => i.id !== id)
+    setItems(updated)
+    saveItems(updated)
     if (selected?.id === id) setSelected(null)
   }
 
