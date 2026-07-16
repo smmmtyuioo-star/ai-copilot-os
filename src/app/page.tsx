@@ -57,8 +57,10 @@ export default function HomePage() {
   const [dark, setDark] = useState(false)
   const [urlPreview, setUrlPreview] = useState<{ url: string; title: string; loading: boolean; error: string } | null>(null)
   const [showAttach, setShowAttach] = useState(false)
+  const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile')
   const attachRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -247,13 +249,22 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     }
   }
 
+  function handleCancel() {
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+    setStreaming(false)
+    setStreamContent(prev => prev + '\n\n[Generation cancelled]')
+  }
+
   async function handleSend() {
     if (!input.trim() || streaming) return
     let convId = activeConv
     if (!convId) {
       const conv: Conversation = {
         id: generateId(), user_id: 'local', title: input.slice(0, 50),
-        model: 'llama-3.3-70b-versatile',
+        model: selectedModel,
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       }
       await db.addConversation(conv)
@@ -267,12 +278,13 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     }
     setMessages(prev => [...prev, userMsg])
     await db.addMessage(userMsg)
+    const sentInput = input
     setInput('')
     setStreaming(true)
     setStreamContent('')
 
     // Check for build command first
-    const buildResult = await handleBuildCommand(input)
+    const buildResult = await handleBuildCommand(sentInput)
     if (buildResult) {
       setStreamContent(buildResult)
       const asstMsg: Message = {
@@ -287,7 +299,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     }
 
     // Check for game builder trigger
-    const gameResult = await executeGameBuilder(input)
+    const gameResult = await executeGameBuilder(sentInput)
     if (gameResult) {
       setStreamContent(gameResult)
       const asstMsg: Message = {
@@ -302,7 +314,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     }
 
     // Check for website builder trigger
-    const websiteResult = await executeWebsiteBuilder(input)
+    const websiteResult = await executeWebsiteBuilder(sentInput)
     if (websiteResult) {
       setStreamContent(websiteResult)
       const asstMsg: Message = {
@@ -317,7 +329,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     }
 
     // Check for auto-trigger agents
-    const agentResult = await executeAutoAgent(input)
+    const agentResult = await executeAutoAgent(sentInput)
     if (agentResult) {
       setStreamContent(agentResult)
       const asstMsg: Message = {
@@ -332,7 +344,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     }
 
     // Check for connector commands first
-    const connectorResult = await executeConnector(input)
+    const connectorResult = await executeConnector(sentInput)
     if (connectorResult) {
       setStreamContent(connectorResult)
       const asstMsg: Message = {
@@ -346,10 +358,15 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
       return
     }
 
+    const abortController = new AbortController()
+    abortRef.current = abortController
     const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
-    const fullResponse = await streamAiResponse(history, 'llama-3.3-70b-versatile',
+
+    const fullResponse = await streamAiResponse(
+      history, selectedModel,
       (token) => setStreamContent(prev => prev + token),
       (error) => { setStreamContent(`Error: ${error}`); setStreaming(false) },
+      abortController.signal,
     )
     if (fullResponse) {
       const asstMsg: Message = {
@@ -359,6 +376,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
       await db.addMessage(asstMsg)
       setMessages(prev => [...prev, asstMsg])
     }
+    if (abortRef.current === abortController) abortRef.current = null
     setStreaming(false); setStreamContent('')
   }
 
@@ -519,6 +537,19 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
             <Menu className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-2">
+            <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)}
+              className="text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">
+              <optgroup label="Groq (Free)">
+                <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
+                <option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
+                <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                <option value="gemma2-9b-it">Gemma 2 9B</option>
+              </optgroup>
+              <optgroup label="OpenRouter">
+                <option value="openai/gpt-4o">GPT-4o</option>
+                <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+              </optgroup>
+            </select>
             <button onClick={toggleDark} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
@@ -626,10 +657,18 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                 </div>
               )}
             </div>
-            <button onClick={handleSend} disabled={!input.trim() || streaming}
-              className="rounded-xl bg-blue-600 p-3 text-white hover:bg-blue-700 disabled:opacity-50">
-              {streaming ? <span className="block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="h-4 w-4" />}
-            </button>
+            {streaming ? (
+              <button onClick={handleCancel}
+                className="rounded-xl bg-red-600 p-3 text-white hover:bg-red-700 flex items-center gap-1.5">
+                <span className="block w-3 h-3 bg-white rounded-sm" />
+                <span className="text-xs font-medium">Stop</span>
+              </button>
+            ) : (
+              <button onClick={handleSend} disabled={!input.trim() || streaming}
+                className="rounded-xl bg-blue-600 p-3 text-white hover:bg-blue-700 disabled:opacity-50">
+                <Send className="h-4 w-4" />
+              </button>
+            )}
           </div>
           <p className="text-center text-xs text-gray-400 mt-2">AI Copilot OS • Built by Rishav • Real AI. Real Build. Real Preview.</p>
         </div>

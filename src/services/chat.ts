@@ -88,6 +88,7 @@ export async function streamAiResponse(
   model?: string,
   onToken?: (token: string) => void,
   onError?: (error: string) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
   try {
     let mcpEndpoints: any[] = []
@@ -108,6 +109,7 @@ export async function streamAiResponse(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, model: model || 'llama-3.3-70b-versatile', mcpEndpoints, tools }),
+      signal: signal || AbortSignal.timeout(60000),
     })
 
     if (!response.ok) {
