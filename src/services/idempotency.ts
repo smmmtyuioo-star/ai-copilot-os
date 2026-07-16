@@ -29,6 +29,13 @@ const WRITE_SUMMARIES: Record<string, (args: Record<string, any>) => string> = {
     const codePreview = String(args.code || '').slice(0, 80)
     return `Execute code: "${codePreview}${codePreview.length >= 80 ? '...' : ''}"`
   },
+  shell: (args) => {
+    const cmdPreview = String(args.command || '').slice(0, 80)
+    return `Run shell command: "${cmdPreview}${cmdPreview.length >= 80 ? '...' : ''}"`
+  },
+  edit: (args) => `Edit file: ${args.filePath}`,
+  write: (args) => `Write file: ${args.filePath}`,
+  preview: (args) => `Start preview server in ${args.workdir} with command ${args.command}`,
 }
 
 function isReadOnlyGitHubAction(action: string): boolean {

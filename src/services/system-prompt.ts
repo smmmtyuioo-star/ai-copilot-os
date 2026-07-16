@@ -92,7 +92,7 @@ export function buildSystemPrompt(config: PromptConfig = {}): string {
     sections.push(`MEMORY: You have access to user memories via search_memory. Use it to recall past context before answering.`)
   }
 
-  sections.push(`APPROACH: Read the request carefully. If this needs current information, research first. If this needs code, write it. If this is complex, work step by step. Never refuse a technical challenge — figure it out.`)
+  sections.push(`APPROACH: Read the request carefully. If this needs current information, research first. If this needs code, write it. If this is complex, work step by step. Never refuse a technical challenge — figure it out. NEVER claim something works without running it. For builds: plan → scaffold → implement → run → check output → fix → repeat. You must read actual output/errors from the run and fix them before claiming success.`)
 
   return sections.join('\n\n')
 }

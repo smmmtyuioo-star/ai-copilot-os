@@ -1,5 +1,6 @@
 import vm from 'vm'
 import { parseError } from '@/lib/utils'
+import { safeTruncateOutput } from '@/lib/truncate'
 
 export interface CodeExecutionConfig {
   code: string
@@ -67,18 +68,13 @@ export async function executeCode(config: CodeExecutionConfig): Promise<CodeExec
     script.runInContext(context, { timeout, breakOnSigint: true })
 
     const executionTimeMs = Date.now() - startTime
-    let stdout = stdoutChunks.join('\n')
-    let stderr = stderrChunks.join('\n')
-    if (stdout.length > maxOutputLength) stdout = stdout.slice(0, maxOutputLength) + '\n... [output truncated]'
-    if (stderr.length > maxOutputLength) stderr = stderr.slice(0, maxOutputLength) + '\n... [output truncated]'
-
+    const stdout = await safeTruncateOutput(stdoutChunks.join('\n'), maxOutputLength, 'code_stdout')
+    const stderr = await safeTruncateOutput(stderrChunks.join('\n'), maxOutputLength, 'code_stderr')
     return { success: true, stdout, stderr, executionTimeMs }
   } catch (err) {
     const executionTimeMs = Date.now() - startTime
-    let stdout = stdoutChunks.join('\n')
-    let stderr = stderrChunks.join('\n')
-    if (stdout.length > maxOutputLength) stdout = stdout.slice(0, maxOutputLength) + '\n... [output truncated]'
-    if (stderr.length > maxOutputLength) stderr = stderr.slice(0, maxOutputLength) + '\n... [output truncated]'
+    const stdout = await safeTruncateOutput(stdoutChunks.join('\n'), maxOutputLength, 'code_stdout')
+    const stderr = await safeTruncateOutput(stderrChunks.join('\n'), maxOutputLength, 'code_stderr')
     return { success: false, stdout, stderr, executionTimeMs, error: parseError(err) }
   }
 }

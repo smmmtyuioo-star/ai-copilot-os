@@ -15,6 +15,16 @@ function getProvider(model: string) {
   return PROVIDERS.groq
 }
 
+function getModelMaxTokens(model: string): number {
+  const modelLower = model.toLowerCase();
+  if (modelLower.includes('claude-3.5') || modelLower.includes('claude-3-5')) return 8192;
+  if (modelLower.includes('gpt-4o')) return 16384;
+  if (modelLower.includes('gemini-1.5') || modelLower.includes('gemini-2.0')) return 8192;
+  if (modelLower.includes('llama-3.3')) return 8192;
+  if (modelLower.includes('mixtral')) return 32768;
+  return 4096;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { agent, request: userRequest } = await request.json()
@@ -45,7 +55,7 @@ export async function POST(request: NextRequest) {
           { role: 'system', content: agent.system_prompt + '\n\nYou are part of AI Copilot OS — a full-stack engineering system. You can handle any task: frontend, backend, database, architecture, design, data analysis, trading systems, documentation, and more. Be thorough and precise.\n\nTHINKING PATTERN: Use "constraints first, prototype risk" — identify constraints, find the riskiest assumption, prototype to validate it first.\n\nFREE PROVIDERS: Groq, Cerebras, Fireworks, DeepSeek, Mistral, OpenRouter, Cloudflare, NVIDIA, Gemini are available via proxy route with BYOK.\n\nAI CODING RULES: Be specific, one task per message, share error messages, provide file paths. When user says "build a game" or "build a website", the system auto-triggers dedicated builders.' },
           { role: 'user', content: userRequest },
         ],
-        max_tokens: 4096,
+        max_tokens: getModelMaxTokens(agent.model || 'llama-3.3-70b-versatile'),
         temperature: 0.7,
       }),
     })

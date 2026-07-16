@@ -2,6 +2,7 @@ import { env } from '@/config/env'
 import { executeTool, getToolDefinitions } from '@/services/tools'
 import { shouldConfirmTool, getWriteActionSummary } from '@/services/idempotency'
 import { recordToolCall } from '@/services/telemetry'
+import { connectMCPEndpoint, executeMCPTool } from '@/services/mcp'
 import type { ToolExecutionContext, ToolName } from '@/services/tools'
 
 const PROVIDERS: Record<string, { baseUrl: string; key: () => string; models: string[] }> = {
@@ -36,6 +37,7 @@ function detectProvider(model: string): string | null {
 export interface AgentLoopConfig {
   messages: { role: string; content: string }[]
   tools: ToolName[]
+  mcpEndpoints?: any[]
   model?: string
   temperature?: number
   maxTokens?: number
@@ -118,10 +120,36 @@ function isCompleteResponse(response: string): boolean {
 }
 
 export async function runAgentLoop(config: AgentLoopConfig): Promise<AgentLoopResult> {
-  const { messages, tools, model, temperature, maxTokens, userId, maxTurns = 10, systemPrompt } = config
+  const { messages, tools, mcpEndpoints, model, temperature, maxTokens, userId, maxTurns = 10, systemPrompt } = config
   const sessionId = `agent_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
   const modelToUse = model || env.ai.defaultModel
-  const toolDefinitions = getToolDefinitions(tools as string[])
+  
+  let toolDefinitions = getToolDefinitions(tools as string[])
+  const mcpToolMap = new Map<string, string>() // toolName -> endpointId
+  
+  if (mcpEndpoints && mcpEndpoints.length > 0) {
+    for (const ep of mcpEndpoints) {
+      if (ep.status !== 'active') continue
+      try {
+        const connection = await connectMCPEndpoint(ep)
+        for (const t of connection.tools) {
+          const mcpToolName = `mcp_${ep.id}_${t.name}`.replace(/[^a-zA-Z0-9_-]/g, '_')
+          mcpToolMap.set(mcpToolName, ep.id)
+          toolDefinitions.push({
+            type: 'function',
+            function: {
+              name: mcpToolName,
+              description: t.description || `MCP Tool: ${t.name}`,
+              parameters: t.inputSchema || { type: 'object', properties: {} },
+            }
+          })
+        }
+      } catch (err) {
+        console.error(`Failed to connect to MCP endpoint ${ep.name}:`, err)
+      }
+    }
+  }
+
   const context: ToolExecutionContext = { userId: userId || 'anonymous' }
   const currentMessages: any[] = [...messages]
   let totalToolCalls = 0
@@ -172,7 +200,26 @@ export async function runAgentLoop(config: AgentLoopConfig): Promise<AgentLoopRe
           continue
         }
 
-        const result = await executeTool(toolCall.function.name, args, context)
+        let result = ''
+        const mcpEndpointId = mcpToolMap.get(toolCall.function.name)
+        if (mcpEndpointId) {
+          try {
+            // Un-prefix the tool name
+            const originalToolName = toolCall.function.name.replace(`mcp_${mcpEndpointId}_`, '')
+            const mcpResult = await executeMCPTool(mcpEndpointId, originalToolName, args)
+            
+            // Format MCP results which are typically an array of content blocks
+            if (mcpResult && mcpResult.content && Array.isArray(mcpResult.content)) {
+              result = mcpResult.content.map((c: any) => c.text || JSON.stringify(c)).join('\n')
+            } else {
+              result = JSON.stringify(mcpResult)
+            }
+          } catch (err: any) {
+            result = `Error: MCP tool execution failed: ${err.message}`
+          }
+        } else {
+          result = await executeTool(toolCall.function.name, args, context)
+        }
 
         const success = !result.startsWith('Error:') && !result.startsWith('Tool execution error:')
         recordToolCall({

@@ -76,6 +76,16 @@ function detectProvider(model: string): string | null {
   return null
 }
 
+function getModelMaxTokens(model: string): number {
+  const modelLower = model.toLowerCase();
+  if (modelLower.includes('claude-3.5') || modelLower.includes('claude-3-5')) return 8192;
+  if (modelLower.includes('gpt-4o')) return 16384;
+  if (modelLower.includes('gemini-1.5') || modelLower.includes('gemini-2.0')) return 8192;
+  if (modelLower.includes('llama-3.3')) return 8192; // Many providers support 8k+ for 3.3
+  if (modelLower.includes('mixtral')) return 32768;
+  return env.ai.maxTokens;
+}
+
 const SYSTEM_PROMPT = `You are AI Copilot OS — a full-stack AI engineering assistant capable of any task. You have deep expertise across:
 
 FRONTEND: React, Vue, vanilla JS/HTML/CSS, Tailwind, state management (Redux, Zustand, Context), component design, responsive layouts, WCAG accessibility, interactive UI artifacts.
@@ -108,7 +118,7 @@ Whenever the user asks a question or requests a task, use ALL relevant capabilit
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages, model, provider: explicitProvider, stream: doStream = true, temperature, max_tokens, tools, user_id } = await request.json()
+    const { messages, model, provider: explicitProvider, stream: doStream = true, temperature, max_tokens, tools, mcpEndpoints, user_id } = await request.json()
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: 'Messages are required' }, { status: 400 })
@@ -125,10 +135,11 @@ export async function POST(request: NextRequest) {
         explicitModel: model,
       })
 
+      const modelForLoop = tierConfig.model;
       const result = await runAgentLoop({
-        messages, tools, model: tierConfig.model,
+        messages, tools, mcpEndpoints, model: modelForLoop,
         temperature: temperature ?? tierConfig.temperature,
-        maxTokens: max_tokens ?? tierConfig.maxTokens,
+        maxTokens: max_tokens ?? getModelMaxTokens(modelForLoop),
         maxTurns: tierConfig.maxTurns,
         userId: user_id,
       })
@@ -206,7 +217,7 @@ export async function POST(request: NextRequest) {
           model: modelToUse,
           messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
           stream: doStream,
-          max_tokens: max_tokens ?? env.ai.maxTokens,
+          max_tokens: max_tokens ?? getModelMaxTokens(modelToUse),
           temperature: temperature ?? env.ai.temperature,
         }),
       })

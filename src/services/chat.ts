@@ -90,10 +90,24 @@ export async function streamAiResponse(
   onError?: (error: string) => void,
 ): Promise<string> {
   try {
+    let mcpEndpoints: any[] = []
+    if (hasSupabase) {
+      const supabase = getSupabase()
+      if (supabase) {
+        const { data } = await supabase.from('mcp_endpoints').select('*')
+        if (data) mcpEndpoints = data
+      }
+    } else {
+      mcpEndpoints = localStore.mcpEndpoints.items
+    }
+
+    // Default built-in tools
+    const tools = ['web_search', 'github_action', 'safe_browsing', 'search_memory', 'execute_code', 'shell', 'edit', 'write', 'preview']
+
     const response = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, model: model || 'llama-3.3-70b-versatile' }),
+      body: JSON.stringify({ messages, model: model || 'llama-3.3-70b-versatile', mcpEndpoints, tools }),
     })
 
     if (!response.ok) {

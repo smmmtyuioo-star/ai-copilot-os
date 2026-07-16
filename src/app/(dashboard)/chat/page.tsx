@@ -194,19 +194,39 @@ export default function ChatPage() {
               </div>
             </div>
           )}
-          {messages.map(msg => (
-            <div key={msg.id} className={cn('flex gap-3', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
-              <div className={cn(
-                'max-w-[80%] rounded-xl px-4 py-2',
-                msg.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-gray-100',
-              )}>
-                <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
-                <p className="mt-1 text-xs opacity-60">{formatDate(msg.created_at)}</p>
+          {messages.map(msg => {
+            const localhostMatch = msg.role === 'assistant' ? msg.content.match(/(http:\/\/localhost:\d+)/) : null;
+            return (
+              <div key={msg.id} className={cn('flex gap-3', msg.role === 'user' ? 'justify-end' : 'justify-start')}>
+                <div className={cn(
+                  'max-w-[80%] rounded-xl px-4 py-2',
+                  msg.role === 'user'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-gray-100',
+                  localhostMatch ? 'w-[80%]' : ''
+                )}>
+                  <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
+                  
+                  {localhostMatch && (
+                    <div className="mt-4 w-full h-[500px] border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden bg-white">
+                      <div className="bg-gray-200 dark:bg-gray-800 px-3 py-2 text-xs font-mono text-gray-600 dark:text-gray-400 border-b border-gray-300 dark:border-gray-600 flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-green-500" />
+                          Live Preview: {localhostMatch[1]}
+                        </span>
+                        <a href={localhostMatch[1]} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline flex items-center gap-1">
+                          <ExternalLink className="h-3 w-3" /> Open
+                        </a>
+                      </div>
+                      <iframe src={localhostMatch[1]} className="w-full h-[calc(100%-36px)] bg-white" />
+                    </div>
+                  )}
+
+                  <p className="mt-1 text-xs opacity-60">{formatDate(msg.created_at)}</p>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
           {streaming && (
             <div className="flex gap-3 justify-start">
               <div className="relative shrink-0 mt-1">

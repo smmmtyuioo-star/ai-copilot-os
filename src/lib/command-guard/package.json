@@ -1,0 +1,16 @@
+{
+  "name": "command-guard-ts",
+  "version": "0.1.0",
+  "description": "TypeScript port of the destructive_command_guard pattern database — no API keys, no network calls, runs anywhere including serverless.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "demo": "tsx src/demo.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.16.0"
+  }
+}

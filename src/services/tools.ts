@@ -132,6 +132,67 @@ export const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
       },
     },
   },
+  shell: {
+    safety: 'write',
+    definition: {
+      name: 'shell',
+      description: 'Execute arbitrary OS commands in a sandboxed shell. Use this to compile code, run tests, manage files, or interact with the system.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', description: 'The shell command to execute' },
+          workdir: { type: 'string', description: 'Working directory for the command (optional)' },
+        },
+        required: ['command'],
+      },
+    },
+  },
+  edit: {
+    safety: 'write',
+    definition: {
+      name: 'edit',
+      description: 'Edit a file using search-and-replace style patches. Use this to modify existing files.',
+      parameters: {
+        type: 'object',
+        properties: {
+          filePath: { type: 'string', description: 'Absolute path to the file' },
+          oldString: { type: 'string', description: 'The exact string to replace' },
+          newString: { type: 'string', description: 'The new string to insert' },
+        },
+        required: ['filePath', 'oldString', 'newString'],
+      },
+    },
+  },
+  write: {
+    safety: 'write',
+    definition: {
+      name: 'write',
+      description: 'Write a full file to disk, overwriting it entirely if it exists. Use this for new files or complete rewrites.',
+      parameters: {
+        type: 'object',
+        properties: {
+          filePath: { type: 'string', description: 'Absolute path to the file' },
+          content: { type: 'string', description: 'The full file content' },
+        },
+        required: ['filePath', 'content'],
+      },
+    },
+  },
+  preview: {
+    safety: 'write',
+    definition: {
+      name: 'preview',
+      description: 'Start a live preview development server for a project. Returns the URL where the preview is running.',
+      parameters: {
+        type: 'object',
+        properties: {
+          workdir: { type: 'string', description: 'Working directory to start the server in' },
+          command: { type: 'string', description: 'Command to run (e.g. "npm run dev")' },
+        },
+        required: ['workdir', 'command'],
+      },
+    },
+  },
 }
 
 export function getToolDefinitions(toolNames?: string[]): { type: 'function'; function: ToolDefinition }[] {
@@ -381,6 +442,90 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
       return output
     } catch (err) {
       return `Code execution error: ${err instanceof Error ? err.message : 'Unknown error'}`
+    }
+  },
+
+  shell: async (args) => {
+    const command = String(args.command || '')
+    if (!command) return 'Error: command is required'
+    const workdir = args.workdir ? String(args.workdir) : process.cwd()
+
+    try {
+      const { evaluateCommand } = await import('@/lib/command-guard/src/engine')
+      const guardResult = evaluateCommand(command)
+      if (!guardResult.allowed) {
+        return `Error: Command blocked by safety rules (Severity: ${guardResult.severity}). Reason: ${guardResult.matches[0]?.reason}`
+      }
+      
+      const { exec } = await import('child_process')
+      const util = await import('util')
+      const execPromise = util.promisify(exec)
+      
+      const { stdout, stderr } = await execPromise(command, { cwd: workdir, timeout: 120000 })
+      let output = ''
+      if (stdout) output += `Stdout:\n${stdout}\n`
+      if (stderr) output += `Stderr:\n${stderr}\n`
+      
+      const maxChars = 20000
+      const { safeTruncateOutput } = await import('@/lib/truncate')
+      output = await safeTruncateOutput(output, maxChars, 'shell_output')
+      
+      return output.trim() || '(no output)'
+    } catch (err: any) {
+      return `Shell error: ${err.message || 'Unknown error'}\n${err.stdout ? `Stdout: ${err.stdout}\n` : ''}${err.stderr ? `Stderr: ${err.stderr}` : ''}`
+    }
+  },
+
+  edit: async (args) => {
+    const filePath = String(args.filePath || '')
+    const oldString = String(args.oldString || '')
+    const newString = String(args.newString || '')
+    if (!filePath || !oldString || newString === undefined) return 'Error: filePath, oldString, and newString are required'
+    if (oldString === newString) return 'Error: oldString and newString are identical'
+
+    try {
+      const fs = await import('fs/promises')
+      const content = await fs.readFile(filePath, 'utf8')
+      if (!content.includes(oldString)) {
+        return 'Error: Could not find oldString in the file. It must match exactly.'
+      }
+      // Simple exact match replace (first occurrence)
+      const newContent = content.replace(oldString, newString)
+      await fs.writeFile(filePath, newContent, 'utf8')
+      return `Edit applied successfully to ${filePath}.`
+    } catch (err: any) {
+      return `Edit error: ${err.message}`
+    }
+  },
+
+  write: async (args) => {
+    const filePath = String(args.filePath || '')
+    const content = String(args.content || '')
+    if (!filePath || content === undefined) return 'Error: filePath and content are required'
+
+    try {
+      const fs = await import('fs/promises')
+      const path = await import('path')
+      await fs.mkdir(path.dirname(filePath), { recursive: true })
+      await fs.writeFile(filePath, content, 'utf8')
+      return `File written successfully to ${filePath}.`
+    } catch (err: any) {
+      return `Write error: ${err.message}`
+    }
+  },
+
+  preview: async (args, context) => {
+    const workdir = String(args.workdir || '')
+    const command = String(args.command || 'npm run dev')
+    if (!workdir) return 'Error: workdir is required'
+
+    try {
+      const { startPreviewServer } = await import('@/services/preview-server')
+      const id = context?.userId || 'anonymous_preview'
+      const { url, port } = await startPreviewServer(id, workdir, command)
+      return `Preview server started successfully at ${url} (Port ${port}). Provide this URL to the user to view the app.`
+    } catch (err: any) {
+      return `Preview error: ${err.message}`
     }
   },
 }
