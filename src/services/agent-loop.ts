@@ -46,12 +46,27 @@ export interface AgentLoopConfig {
   systemPrompt?: string
 }
 
+export interface PendingConfirmation {
+  sessionId: string
+  tool: string
+  args: Record<string, any>
+  summary: string
+  messages: any[]
+  model: string
+  options: {
+    temperature?: number
+    maxTokens?: number
+    systemPrompt?: string
+  }
+}
+
 export interface AgentLoopResult {
   success: boolean
   content: string
   turns: number
   toolCalls: number
   error?: string
+  needsConfirmation?: PendingConfirmation
 }
 
 async function callLlm(
@@ -118,6 +133,88 @@ function isCompleteResponse(response: string): boolean {
     /\b(i have|here are|the (result|output|answer) (is|are))\b/i,
   ]
   return complete.some(p => p.test(response))
+}
+
+const pendingConfirmations = new Map<string, PendingConfirmation>()
+
+export function getPendingConfirmation(sessionId: string): PendingConfirmation | undefined {
+  return pendingConfirmations.get(sessionId)
+}
+
+export function removePendingConfirmation(sessionId: string): void {
+  pendingConfirmations.delete(sessionId)
+}
+
+export async function resumeAgentLoop(
+  sessionId: string,
+  approved: boolean,
+  config: AgentLoopConfig
+): Promise<AgentLoopResult> {
+  const pending = pendingConfirmations.get(sessionId)
+  if (!pending) {
+    return { success: false, content: '', turns: 0, toolCalls: 0, error: 'No pending confirmation found' }
+  }
+  pendingConfirmations.delete(sessionId)
+
+  const messages = pending.messages
+  const toolCall = messages[messages.length - 1]?.tool_calls?.[0]
+  if (!toolCall) {
+    return { success: false, content: '', turns: 0, toolCalls: 0, error: 'No pending tool call found' }
+  }
+
+  if (approved) {
+    let args: Record<string, any> = {}
+    try { args = JSON.parse(toolCall.function.arguments) } catch { args = {} }
+
+    const context: ToolExecutionContext = { userId: config.userId || 'anonymous' }
+    let result = ''
+    const mcpToolMap = new Map<string, string>()
+
+    if (config.mcpEndpoints) {
+      for (const ep of config.mcpEndpoints) {
+        const connection = await connectMCPEndpoint(ep)
+        for (const t of connection.tools) {
+          const mcpToolName = `mcp_${ep.id}_${t.name}`.replace(/[^a-zA-Z0-9_-]/g, '_')
+          mcpToolMap.set(mcpToolName, ep.id)
+        }
+      }
+    }
+
+    const mcpEndpointId = mcpToolMap.get(toolCall.function.name)
+    if (mcpEndpointId) {
+      try {
+        const originalToolName = toolCall.function.name.replace(`mcp_${mcpEndpointId}_`, '')
+        const mcpResult = await executeMCPTool(mcpEndpointId, originalToolName, args)
+        if (mcpResult && mcpResult.content && Array.isArray(mcpResult.content)) {
+          result = mcpResult.content.map((c: any) => c.text || JSON.stringify(c)).join('\n')
+        } else {
+          result = JSON.stringify(mcpResult)
+        }
+      } catch (err: any) {
+        result = `Error: MCP tool execution failed: ${err.message}`
+      }
+    } else {
+      result = await executeTool(toolCall.function.name, args, context)
+    }
+
+    messages.push({ role: 'tool', tool_call_id: toolCall.id, content: result })
+  } else {
+    messages.push({ role: 'tool', tool_call_id: toolCall.id, content: '[USER DENIED] The user denied this action.' })
+  }
+
+  const runConfig: AgentLoopConfig = {
+    messages,
+    tools: config.tools,
+    mcpEndpoints: config.mcpEndpoints,
+    model: pending.model,
+    temperature: pending.options.temperature,
+    maxTokens: pending.options.maxTokens,
+    userId: config.userId,
+    maxTurns: config.maxTurns,
+    systemPrompt: pending.options.systemPrompt,
+  }
+
+  return runAgentLoop(runConfig)
 }
 
 export async function runAgentLoop(config: AgentLoopConfig): Promise<AgentLoopResult> {
@@ -187,18 +284,24 @@ export async function runAgentLoop(config: AgentLoopConfig): Promise<AgentLoopRe
         const toolStart = Date.now()
 
         if (shouldConfirmTool(toolCall.function.name as ToolName, args)) {
-          const summary = getWriteActionSummary(toolCall.function.name as ToolName, args)
-          recordToolCall({
-            timestamp: new Date().toISOString(), tool: toolCall.function.name, userId: userId || 'anonymous',
-            sessionId, args, latencyMs: Date.now() - toolStart, success: true,
-            resultLength: 0,
-          })
-          currentMessages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: `[ACTION REQUIRES CONFIRMATION] ${summary || toolCall.function.name}. The user must approve this action before it can be executed. Please ask the user to confirm.`,
-          })
-          continue
+          const summary = getWriteActionSummary(toolCall.function.name as ToolName, args) || `${toolCall.function.name}`
+          const pending: PendingConfirmation = {
+            sessionId,
+            tool: toolCall.function.name,
+            args,
+            summary,
+            messages: currentMessages,
+            model: modelToUse,
+            options: { temperature, maxTokens, systemPrompt },
+          }
+          pendingConfirmations.set(sessionId, pending)
+          return {
+            success: true,
+            content: '',
+            turns: turn + 1,
+            toolCalls: totalToolCalls,
+            needsConfirmation: pending,
+          }
         }
 
         let result = ''

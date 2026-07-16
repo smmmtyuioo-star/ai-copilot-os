@@ -24,12 +24,16 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  const [error, setError] = useState('')
+
   async function handleSave() {
     setSaving(true)
     setSaved(false)
+    setError('')
     const result = await updateProfile({ name })
     setSaving(false)
-    if (result.success) setSaved(true)
+    if (result.success) { setSaved(true); setTimeout(() => setSaved(false), 3000) }
+    else setError(result.error || 'Failed to save profile')
   }
 
   return (
@@ -47,6 +51,7 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <Input id="email" label="Email" type="email" value={user?.email || ''} disabled />
           <Input id="name" label="Name" type="text" value={name} onChange={e => setName(e.target.value)} />
+          {error && <p className="text-sm text-red-500">{error}</p>}
           <Button onClick={handleSave} loading={saving}>
             {saved ? 'Saved!' : 'Save Changes'}
           </Button>

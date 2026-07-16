@@ -148,9 +148,20 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: result.error || 'Agent loop failed' }, { status: 500 })
       }
 
+      if (result.needsConfirmation) {
+        return NextResponse.json({
+          needsConfirmation: {
+            sessionId: result.needsConfirmation.sessionId,
+            tool: result.needsConfirmation.tool,
+            summary: result.needsConfirmation.summary,
+            args: result.needsConfirmation.args,
+          },
+        })
+      }
+
       let content = result.content
 
-      if (tierConfig.useVerification && lastUserMsg) {
+      if (tierConfig.useVerification && lastUserMsg && content) {
         const verification = await verify({
           response: content,
           originalRequest: lastUserMsg,

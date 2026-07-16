@@ -49,27 +49,34 @@ export default function DocumentsPage() {
       }),
     })
 
-    if (response.ok) {
-      const reader = response.body?.getReader()
-      if (reader) {
-        const decoder = new TextDecoder()
-        let result = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          const text = decoder.decode(value)
-          const lines = text.split('\n').filter(l => l.startsWith('data: '))
-          for (const line of lines) {
-            const data = line.slice(6)
-            if (data === '[DONE]') break
-            try {
-              const parsed = JSON.parse(data)
-              result += parsed.choices?.[0]?.delta?.content || ''
-            } catch {}
-          }
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Analysis failed' }))
+      doc.status = 'error'
+      doc.error = err.error || 'Analysis failed'
+      setAnalyzing('')
+      setDocs(prev => [...prev])
+      return
+    }
+
+    const reader = response.body?.getReader()
+    if (reader) {
+      const decoder = new TextDecoder()
+      let result = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const text = decoder.decode(value)
+        const lines = text.split('\n').filter(l => l.startsWith('data: '))
+        for (const line of lines) {
+          const data = line.slice(6)
+          if (data === '[DONE]') break
+          try {
+            const parsed = JSON.parse(data)
+            result += parsed.choices?.[0]?.delta?.content || ''
+          } catch {}
         }
-        doc.summary = result
       }
+      doc.summary = result
     }
 
     doc.chunks = Math.ceil(content.length / 1000)
@@ -100,25 +107,30 @@ export default function DocumentsPage() {
       }),
     })
 
-    if (response.ok) {
-      const reader = response.body?.getReader()
-      if (reader) {
-        const decoder = new TextDecoder()
-        let result = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          const text = decoder.decode(value)
-          const lines = text.split('\n').filter(l => l.startsWith('data: '))
-          for (const line of lines) {
-            const data = line.slice(6)
-            if (data === '[DONE]') break
-            try {
-              const parsed = JSON.parse(data)
-              const token = parsed.choices?.[0]?.delta?.content || ''
-              if (token) { result += token; setAnswer(prev => prev + token) }
-            } catch {}
-          }
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Query failed' }))
+      setAnswer(`Error: ${err.error || 'Query failed'}`)
+      setAnswering(false)
+      return
+    }
+
+    const reader = response.body?.getReader()
+    if (reader) {
+      const decoder = new TextDecoder()
+      let result = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const text = decoder.decode(value)
+        const lines = text.split('\n').filter(l => l.startsWith('data: '))
+        for (const line of lines) {
+          const data = line.slice(6)
+          if (data === '[DONE]') break
+          try {
+            const parsed = JSON.parse(data)
+            const token = parsed.choices?.[0]?.delta?.content || ''
+            if (token) { result += token; setAnswer(prev => prev + token) }
+          } catch {}
         }
       }
     }
@@ -171,6 +183,9 @@ export default function DocumentsPage() {
                     <div className="mt-2 flex items-center gap-2 text-sm text-blue-600">
                       <Loader2 className="h-4 w-4 animate-spin" /> Analyzing...
                     </div>
+                  )}
+                  {doc.error && (
+                    <p className="mt-2 text-sm text-red-500 flex items-center gap-1"><AlertCircle className="h-3 w-3" /> {doc.error}</p>
                   )}
                   {doc.summary && (
                     <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{doc.summary}</p>
