@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Puzzle, Download, Trash2, CheckCircle2, AlertCircle, Play, X, Loader2, Copy, Search, Plus } from 'lucide-react'
+import { Download, Trash2, CheckCircle2, AlertCircle, Play, Copy, Search } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Modal } from '@/components/ui'
 import { generateId } from '@/lib/utils'
 
@@ -67,14 +67,14 @@ export default function PluginsPage() {
     localStorage.setItem('ac_plugins', JSON.stringify(list.filter(p => p.installed).map(p => p.id)))
   }
 
-  function install(id: string) {
+  function enable(id: string) {
     saveState(plugins.map(p => p.id === id ? { ...p, installed: true } : p))
     const plugin = plugins.find(p => p.id === id)
-    setMessage({ type: 'success', text: `"${plugin?.name}" installed — click Use to run it` })
+    setMessage({ type: 'success', text: `"${plugin?.name}" enabled — click Use to run it` })
     setTimeout(() => setMessage(null), 3000)
   }
 
-  function uninstall(id: string) {
+  function disable(id: string) {
     saveState(plugins.map(p => p.id === id ? { ...p, installed: false } : p))
     if (action?.plugin.id === id) setAction(null)
   }
@@ -123,8 +123,8 @@ export default function PluginsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Plugin Marketplace</h1>
-        <p className="text-sm text-gray-500">Install plugins with real AI-powered actions</p>
+        <h1 className="text-2xl font-bold">Plugin Presets</h1>
+        <p className="text-sm text-gray-500">Prompt presets — not actual code plugins.</p>
       </div>
 
       {message && (
@@ -144,8 +144,10 @@ export default function PluginsPage() {
               placeholder="Search plugins (e.g. code, translate, export...)"
               className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm dark:border-gray-600 dark:bg-gray-700" />
           </div>
-          {pluginSearch.length >= 2 && (
-            <div className="mt-2 space-y-1">
+        </CardHeader>
+        {pluginSearch.length >= 2 && (
+          <CardContent>
+            <div className="space-y-1">
               {AVAILABLE_PLUGINS.filter(p =>
                 p.name.toLowerCase().includes(pluginSearch) ||
                 p.description.toLowerCase().includes(pluginSearch) ||
@@ -159,9 +161,9 @@ export default function PluginsPage() {
                       <span className="text-sm font-medium">{p.name}</span>
                       <span className="text-xs text-gray-400">{p.category}</span>
                     </div>
-                    <button onClick={() => { if (!installed) install(p.id); setPluginSearch('') }}
+                    <button onClick={() => { if (!installed) enable(p.id); setPluginSearch('') }}
                       className={`text-xs ${installed ? 'text-green-600' : 'text-blue-600 hover:underline'}`}>
-                      {installed ? 'Installed' : 'Install'}
+                      {installed ? 'Enabled' : 'Enable'}
                     </button>
                   </div>
                 )
@@ -174,8 +176,8 @@ export default function PluginsPage() {
                 <p className="text-xs text-gray-400 py-2 text-center">No plugins found</p>
               )}
             </div>
-          )}
-        </CardHeader>
+          </CardContent>
+        )}
       </Card>
 
       <div className="flex gap-2 overflow-x-auto pb-2">
@@ -205,18 +207,18 @@ export default function PluginsPage() {
               <CardContent>
                 <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">{plugin.description}</p>
                 <p className="mb-3 text-xs text-gray-400">v{plugin.version} by {plugin.author}</p>
-                {plugin.installed ? (
+                  {plugin.installed ? (
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => setAction({ plugin, loading: false, input: '', output: '', error: '' })}>
                       <Play className="h-4 w-4" /> Use
                     </Button>
-                    <Button size="sm" variant="danger" onClick={() => uninstall(plugin.id)}>
-                      <Trash2 className="h-4 w-4" />
+                    <Button size="sm" variant="danger" onClick={() => disable(plugin.id)}>
+                      <Trash2 className="h-4 w-4" /> Disable
                     </Button>
                   </div>
                 ) : (
-                  <Button size="sm" onClick={() => install(plugin.id)}>
-                    <Download className="h-4 w-4" /> Install
+                    <Button size="sm" onClick={() => enable(plugin.id)}>
+                    <Download className="h-4 w-4" /> Enable
                   </Button>
                 )}
               </CardContent>

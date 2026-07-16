@@ -29,7 +29,7 @@ function persistToStorage(): void {
     }
     const recent = all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 500)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(recent))
-  } catch {}
+  } catch (e) { console.error('Telemetry: failed to persist to storage:', e) }
 }
 
 function loadFromStorage(): void {
@@ -40,7 +40,7 @@ function loadFromStorage(): void {
       const records: ToolCallRecord[] = JSON.parse(data)
       inMemoryStore.set('persisted', records)
     }
-  } catch {}
+  } catch (e) { console.error('Telemetry: failed to load from storage:', e) }
 }
 
 loadFromStorage()

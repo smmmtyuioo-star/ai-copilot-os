@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import {
   LayoutDashboard, MessageSquare, Bot, Globe,
   Brain, Plug, Puzzle, Network, Key, Settings, LogOut,
-  FileText, Wand2, Play,
+  FileText, Wand2, Play, Activity,
 } from 'lucide-react'
 
 const navItems = [
@@ -23,6 +23,7 @@ const navItems = [
   { href: '/connectors', label: 'Connectors', icon: Plug },
   { href: '/mcp', label: 'MCP', icon: Network },
   { href: '/api-center', label: 'API Center', icon: Key },
+  { href: '/provider-health', label: 'Provider Health', icon: Activity },
 ]
 
 export function Sidebar() {

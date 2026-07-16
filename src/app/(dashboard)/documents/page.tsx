@@ -16,20 +16,47 @@ interface Document {
   error?: string
 }
 
+const DOCS_KEY = 'ac_documents'
+
+function loadDocs(): Document[] {
+  if (typeof window === 'undefined') return []
+  try { return JSON.parse(localStorage.getItem(DOCS_KEY) || '[]') } catch { return [] }
+}
+
+function saveDocs(docs: Document[]) {
+  try { localStorage.setItem(DOCS_KEY, JSON.stringify(docs)) } catch {}
+}
+
 export default function DocumentsPage() {
-  const [docs, setDocs] = useState<Document[]>([])
+  const [docs, setDocs] = useState<Document[]>(loadDocs)
   const [analyzing, setAnalyzing] = useState('')
   const [query, setQuery] = useState('')
   const [answer, setAnswer] = useState('')
   const [answering, setAnswering] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  function updateDocs(updater: (prev: Document[]) => Document[]) {
+    setDocs(prev => { const next = updater(prev); saveDocs(next); return next })
+  }
+
   async function handleUpload(file: File) {
     const doc: Document = {
       id: generateId(), name: file.name, type: file.type,
       size: file.size, status: 'uploaded',
     }
-    setDocs(prev => [doc, ...prev])
+
+    const binaryTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument', 'image/']
+    const isBinary = binaryTypes.some(t => file.type.startsWith(t)) ||
+      /\.(pdf|docx?|xlsx?|pptx?|png|jpe?g|gif|bmp|zip|rar)$/i.test(file.name)
+    if (isBinary) {
+      doc.status = 'error'
+      doc.error = `Binary format (${file.type || file.name.split('.').pop()}) not supported yet. Upload plain text (TXT, CSV, MD, JSON, etc.)`
+      setAnalyzing('')
+      updateDocs(prev => [doc, ...prev])
+      return
+    }
+
+    updateDocs(prev => [doc, ...prev])
     setAnalyzing(doc.id)
 
     const text = await file.text().catch(() => '')
@@ -54,7 +81,7 @@ export default function DocumentsPage() {
       doc.status = 'error'
       doc.error = err.error || 'Analysis failed'
       setAnalyzing('')
-      setDocs(prev => [...prev])
+      updateDocs(prev => [...prev])
       return
     }
 
@@ -82,7 +109,7 @@ export default function DocumentsPage() {
     doc.chunks = Math.ceil(content.length / 1000)
     doc.status = 'indexed'
     setAnalyzing('')
-    setDocs(prev => [...prev])
+    updateDocs(prev => [...prev])
   }
 
   async function handleAsk() {
@@ -138,7 +165,7 @@ export default function DocumentsPage() {
   }
 
   function removeDoc(id: string) {
-    setDocs(prev => prev.filter(d => d.id !== id))
+    updateDocs(prev => prev.filter(d => d.id !== id))
   }
 
   return (
@@ -156,7 +183,7 @@ export default function DocumentsPage() {
           >
             <Upload className="h-8 w-8 text-gray-400" />
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Drop files or click to upload</p>
-            <p className="text-xs text-gray-500">PDF, DOCX, TXT, CSV, Markdown, Images</p>
+            <p className="text-xs text-gray-500">TXT, CSV, Markdown, JSON, JS/TS, and other text files. Binary files (PDF, DOCX, images) are recognized but content preview requires rendering support.</p>
             <input ref={fileRef} type="file" multiple className="hidden"
               accept=".pdf,.docx,.txt,.csv,.md,.png,.jpg,.jpeg"
               onChange={e => { const files = Array.from(e.target.files || []); files.forEach(f => handleUpload(f)); e.target.value = '' }} />

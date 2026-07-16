@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { Search, Globe, ExternalLink, BookmarkPlus, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { Search, Globe, CheckCircle2, AlertCircle } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Button } from '@/components/ui'
 import { generateId } from '@/lib/utils'
 
@@ -14,13 +14,24 @@ interface Analysis {
   content: string
 }
 
+const WEB_KEY = 'ac_web'
+
+function loadWebState(): { analysis: Analysis | null; searchResult: string } {
+  if (typeof window === 'undefined') return { analysis: null, searchResult: '' }
+  try { return JSON.parse(localStorage.getItem(WEB_KEY) || '{"analysis":null,"searchResult":""}') } catch { return { analysis: null, searchResult: '' } }
+}
+
+function saveWebState(analysis: Analysis | null, searchResult: string) {
+  try { localStorage.setItem(WEB_KEY, JSON.stringify({ analysis, searchResult })) } catch {}
+}
+
 export default function WebIntelligencePage() {
   const [url, setUrl] = useState('')
   const [query, setQuery] = useState('')
   const [analyzing, setAnalyzing] = useState(false)
   const [searching, setSearching] = useState(false)
-  const [analysis, setAnalysis] = useState<Analysis | null>(null)
-  const [searchResult, setSearchResult] = useState('')
+  const [analysis, setAnalysis] = useState<Analysis | null>(loadWebState().analysis)
+  const [searchResult, setSearchResult] = useState(loadWebState().searchResult || '')
   const [error, setError] = useState('')
 
   async function handleAnalyze() {
@@ -58,7 +69,9 @@ export default function WebIntelligencePage() {
         const aiData = await aiRes.json()
         try { result = JSON.parse(aiData.choices?.[0]?.message?.content || '{}') } catch {}
       }
-      setAnalysis({ url: targetUrl, ...result, content: pageContent.slice(0, 2000) })
+      const newAnalysis: Analysis = { url: targetUrl, ...result, content: pageContent.slice(0, 2000) }
+      setAnalysis(newAnalysis)
+      saveWebState(newAnalysis, searchResult)
     } catch (err) {
       setError(`Failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
@@ -76,7 +89,7 @@ export default function WebIntelligencePage() {
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages: [
-          { role: 'system', content: 'You are a web research assistant. Based on your training data, provide a comprehensive answer about the user\'s query. Include relevant facts, technologies, and concepts. Structure your response with sections. Note: I cannot browse the live web, but I can provide information from my training.' },
+          { role: 'system', content: 'You are a knowledgeable AI assistant. Based on your training data, provide a comprehensive answer about the user\'s query. Include relevant facts, technologies, and concepts. Structure your response with sections. Note: I answer from training data, not live web browsing.' },
           { role: 'user', content: query },
         ],
       }),
@@ -94,9 +107,10 @@ export default function WebIntelligencePage() {
         for (const line of lines) {
           const data = line.slice(6)
           if (data === '[DONE]') break
-          try { const parsed = JSON.parse(data); result += parsed.choices?.[0]?.delta?.content || ''; setSearchResult(prev => prev + (parsed.choices?.[0]?.delta?.content || '')) } catch {}
+          try { const parsed = JSON.parse(data); result += parsed.choices?.[0]?.delta?.content || ''; setSearchResult(prev => prev + (parsed.choices?.[0]?.delta?.content || '')) } catch (e) { console.error('Web stream parse error:', e) }
         }
       }
+      saveWebState(analysis, result)
     }
     setSearching(false)
   }
@@ -104,8 +118,8 @@ export default function WebIntelligencePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Web Intelligence</h1>
-        <p className="text-sm text-gray-500">Fetch real URLs and analyze content with AI</p>
+        <h1 className="text-2xl font-bold">Web & AI</h1>
+        <p className="text-sm text-gray-500">Fetch real URLs or ask the AI for information</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -144,8 +158,8 @@ export default function WebIntelligencePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>AI Research</CardTitle>
-            <CardDescription>Ask questions and get AI-powered answers</CardDescription>
+            <CardTitle>Ask AI</CardTitle>
+            <CardDescription>Ask questions and get AI-generated answers from its training data</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex gap-2">

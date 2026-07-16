@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Send, Bot, User, Plus, Trash2, Upload, Puzzle, Wand2, Paperclip, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
@@ -12,6 +13,7 @@ const THINKING_STAGES = ['Analyzing', 'Thinking', 'Building', 'Processing', 'Res
 
 export default function ChatPage() {
   const { user } = useAuth()
+  const router = useRouter()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConv, setActiveConv] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -79,7 +81,15 @@ export default function ChatPage() {
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     if (!files) return
+
+    const BINARY_EXTENSIONS = /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|gz|tar|exe|dll|so|bin|dat|iso|img)$/i
+    const BINARY_MIME = /^(application\/(pdf|vnd\.(openxmlformats-officedocument|msword|ms-excel|ms-powerpoint)|octet-stream|x-zip|x-rar|x-7z))/
+
     Array.from(files).forEach(file => {
+      if (BINARY_EXTENSIONS.test(file.name) || BINARY_MIME.test(file.type)) {
+        setInput(prev => prev + `\n[Attached: ${file.name} (${(file.size / 1024).toFixed(1)} KB) — binary file, content preview not available]\n`)
+        return
+      }
       const reader = new FileReader()
       reader.onload = () => {
         const content = reader.result as string
@@ -271,10 +281,10 @@ export default function ChatPage() {
                     <Upload className="h-4 w-4 text-blue-500" /> Upload File
                     <input type="file" multiple onChange={handleFileUpload} className="hidden" />
                   </label>
-                  <button onClick={() => { window.location.href = '/plugins'; setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
+                  <button onClick={() => { router.push('/plugins'); setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
                     <Puzzle className="h-4 w-4 text-purple-500" /> Plugins
                   </button>
-                  <button onClick={() => { window.location.href = '/skills'; setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
+                  <button onClick={() => { router.push('/skills'); setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
                     <Wand2 className="h-4 w-4 text-green-500" /> Skills
                   </button>
                 </div>

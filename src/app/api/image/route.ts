@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { generateId } from '@/lib/utils'
 import { ok, fail, serverError } from '@/lib/api-utils'
 import { runAgentLoop } from '@/services/agent-loop'
@@ -42,6 +42,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'edit') {
+      if (typeof window === 'undefined') {
+        return NextResponse.json({ error: 'This endpoint is client-side only', hint: 'Image editing not available.' }, { status: 501 })
+      }
       const { html, editInstruction } = await request.json()
       if (!html || !editInstruction) return fail('HTML and edit instruction are required')
       return ok({ html: `<!-- Edited: ${editInstruction} -->\n${html}` }, 'Image updated')

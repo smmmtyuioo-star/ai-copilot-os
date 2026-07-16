@@ -1,10 +1,13 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { generateId } from '@/lib/utils'
 import { ok, fail, serverError } from '@/lib/api-utils'
 import { runAgentLoop } from '@/services/agent-loop'
 
 export async function GET(request: NextRequest) {
   try {
+    if (typeof window === 'undefined') {
+      return NextResponse.json({ error: 'This endpoint is client-side only', hint: 'Document storage is client-side only. Use the browser interface.' }, { status: 501 })
+    }
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') || 'all'
     const localDocs = typeof window !== 'undefined'
@@ -16,6 +19,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    if (typeof window === 'undefined') {
+      return NextResponse.json({ error: 'This endpoint is client-side only', hint: 'Document storage is client-side only. Use the browser interface.' }, { status: 501 })
+    }
     const { title, content, type } = await request.json()
     if (!title || !content) return fail('Title and content are required')
     const doc = {
@@ -33,6 +39,9 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    if (typeof window === 'undefined') {
+      return NextResponse.json({ error: 'This endpoint is client-side only', hint: 'Document storage is client-side only. Use the browser interface.' }, { status: 501 })
+    }
     const { id, title, content, type } = await request.json()
     if (!id) return fail('ID is required')
     const docs = JSON.parse(
@@ -48,6 +57,9 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    if (typeof window === 'undefined') {
+      return NextResponse.json({ error: 'This endpoint is client-side only', hint: 'Document storage is client-side only. Use the browser interface.' }, { status: 501 })
+    }
     const { id } = await request.json()
     if (!id) return fail('ID is required')
     const docs = JSON.parse(

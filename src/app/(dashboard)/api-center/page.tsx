@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Plus, Key, Trash2, Copy, Eye, EyeOff, Check, AlertCircle } from 'lucide-react'
+import { Plus, Key, Trash2, Copy, Eye, EyeOff, Check, AlertCircle, Loader2 } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Modal, Input } from '@/components/ui'
 import { localStore } from '@/lib/storage'
 import { formatDate, generateId } from '@/lib/utils'

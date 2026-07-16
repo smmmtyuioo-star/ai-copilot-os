@@ -1,9 +1,12 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { ok, fail, serverError } from '@/lib/api-utils'
 import { localStore } from '@/lib/storage'
 
 export async function POST(request: NextRequest) {
   try {
+    if (typeof window === 'undefined') {
+      return NextResponse.json({ error: 'This endpoint is client-side only', hint: 'Export is client-side only. Use the browser interface.' }, { status: 501 })
+    }
     const { type, ids } = await request.json()
     if (!type) return fail('Export type is required (conversations, memories, agents, settings, all)')
 

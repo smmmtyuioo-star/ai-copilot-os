@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Network, Trash2, Wifi, WifiOff, CheckCircle2, AlertCircle, Play, Zap, Server, Database, Globe, Bot, Code, Brain, Search, BookOpen, Sparkles, ExternalLink } from 'lucide-react'
+import { Plus, Network, Trash2, Wifi, WifiOff, CheckCircle2, AlertCircle, Play, Zap, Server, Database, Globe, Bot, Code, Brain, Search } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Modal } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import { localStore, hasSupabase } from '@/lib/storage'
@@ -54,6 +54,48 @@ const PRESETS = [
   { name: 'Custom', url: '', protocol: 'https', icon: Globe, desc: 'Any HTTP/HTTPS endpoint' },
 ]
 
+function getAuthHeadersForUrl(url: string): Record<string, string> {
+  const providerMap: Record<string, string> = {
+    'openai.com': 'openai',
+    'anthropic.com': 'anthropic',
+    'groq.com': 'groq',
+    'mistral.ai': 'mistral',
+    'deepseek.com': 'deepseek',
+    'github.com': 'github',
+    'gitlab.com': 'gitlab',
+    'vercel.com': 'vercel',
+    'netlify.com': 'netlify',
+    'supabase.co': 'supabase',
+    'firebase.googleapis.com': 'firebase',
+    'pinecone.io': 'pinecone',
+    'huggingface.co': 'huggingface',
+    'replicate.com': 'replicate',
+    'slack.com': 'slack',
+    'discord.com': 'discord',
+    'notion.com': 'notion',
+    'googleapis.com': 'google',
+    'cloudflare.com': 'cloudflare',
+  }
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  try {
+    const raw = localStorage.getItem('ac_apikeys')
+    if (!raw) return headers
+    const keys = JSON.parse(raw)
+    if (!Array.isArray(keys)) return headers
+    for (const [domain, provider] of Object.entries(providerMap)) {
+      if (url.includes(domain)) {
+        const match = keys.find((k: any) =>
+          k.provider?.toLowerCase() === provider ||
+          k.name?.toLowerCase().includes(provider)
+        )
+        if (match?.key) headers['Authorization'] = `Bearer ${match.key}`
+        break
+      }
+    }
+  } catch { /* ignore */ }
+  return headers
+}
+
 function addConnectorDirectly(userId: string, entry: RegistryEntry, setEndpoints: any, setMessage: any) {
   const endpoint: MCPEndpoint = {
     id: generateId(), user_id: userId, name: entry.name, url: entry.url,
@@ -77,12 +119,15 @@ export default function MCPPage() {
   const [selectedPreset, setSelectedPreset] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [paused, setPaused] = useState(false)
+  const pausedRef = useRef(false)
   const monitorRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => { if (user) { load(); startHealthMonitor() }; return () => stopHealthMonitor() }, [user])
 
   async function startHealthMonitor() {
     monitorRef.current = setInterval(async () => {
+      if (pausedRef.current) return
       for (const ep of endpoints) {
         const startTime = Date.now()
         try {
@@ -91,7 +136,7 @@ export default function MCPPage() {
           const timeout = setTimeout(() => controller.abort(), 5000)
           const response = await fetch('/api/browser/fetch', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeadersForUrl(fullUrl),
             body: JSON.stringify({ url: fullUrl }),
             signal: controller.signal,
           })
@@ -190,7 +235,7 @@ export default function MCPPage() {
       const timeout = setTimeout(() => controller.abort(), 8000)
       const response = await fetch('/api/browser/fetch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeadersForUrl(fullUrl),
         body: JSON.stringify({ url: fullUrl }),
         signal: controller.signal,
       })
@@ -213,6 +258,10 @@ export default function MCPPage() {
     for (const ep of endpoints) { await testConnection(ep.id) }
   }
 
+  function togglePause() {
+    setPaused(prev => { pausedRef.current = !prev; return !prev })
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -224,6 +273,11 @@ export default function MCPPage() {
           {endpoints.length > 1 && (
             <Button variant="secondary" onClick={testAllConnections} size="sm" loading={testing !== null}>
               <Zap className="h-4 w-4" /> Test All
+            </Button>
+          )}
+          {endpoints.length > 0 && (
+            <Button variant="secondary" onClick={togglePause} size="sm">
+              {paused ? 'Resume Monitoring' : 'Pause Monitoring'}
             </Button>
           )}
           <Button onClick={() => setShowCreate(true)}><Plus className="h-4 w-4" /> Add Endpoint</Button>

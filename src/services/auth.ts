@@ -25,7 +25,7 @@ function getLocalUser(): User | null {
       return null
     }
     return session.user
-  } catch { return null }
+  } catch (e) { console.error('Auth: failed to read local user:', e); return null }
 }
 
 function setLocalUser(user: User): void {
@@ -97,7 +97,7 @@ export async function signIn(email: string, password: string): Promise<AuthResul
 export async function signOut(): Promise<void> {
   if (hasSupabase) {
     const supabase = getSupabase()
-    supabase?.auth.signOut()
+    await supabase?.auth.signOut()
   }
   clearLocalUser()
 }
@@ -106,7 +106,8 @@ export async function getCurrentUser(): Promise<User | null> {
   if (hasSupabase) {
     const supabase = getSupabase()
     if (supabase) {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data } = await supabase.auth.getUser()
+      const user = data?.user
       if (user) {
         return {
           id: user.id, email: user.email!, name: user.user_metadata.name || '',

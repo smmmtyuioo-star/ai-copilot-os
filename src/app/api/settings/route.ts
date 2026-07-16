@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { generateId } from '@/lib/utils'
 import { localStore } from '@/lib/storage'
 import { ok, fail, serverError } from '@/lib/api-utils'
@@ -10,6 +10,9 @@ function maskKey(key: string): string {
 
 export async function GET() {
   try {
+    if (typeof window === 'undefined') {
+      return NextResponse.json({ error: 'This endpoint is client-side only', hint: 'Settings storage is client-side only. Use the browser interface.' }, { status: 501 })
+    }
     const masked = localStore.apiKeys.items.map(k => ({ ...k, key: maskKey(k.key) }))
     return ok(masked)
   } catch (e) { return serverError(e) }
@@ -17,6 +20,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    if (typeof window === 'undefined') {
+      return NextResponse.json({ error: 'This endpoint is client-side only', hint: 'Settings storage is client-side only. Use the browser interface.' }, { status: 501 })
+    }
     const { name, key, provider } = await request.json()
     if (!name || !key) return fail('Name and key are required')
     const entry = {
@@ -30,6 +36,9 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
+    if (typeof window === 'undefined') {
+      return NextResponse.json({ error: 'This endpoint is client-side only', hint: 'Settings storage is client-side only. Use the browser interface.' }, { status: 501 })
+    }
     const { id, name, key, provider } = await request.json()
     if (!id) return fail('ID is required')
     localStore.apiKeys.update(id, { name, key, provider })
@@ -39,6 +48,9 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    if (typeof window === 'undefined') {
+      return NextResponse.json({ error: 'This endpoint is client-side only', hint: 'Settings storage is client-side only. Use the browser interface.' }, { status: 501 })
+    }
     const { id } = await request.json()
     if (!id) return fail('ID is required')
     localStore.apiKeys.remove(id)

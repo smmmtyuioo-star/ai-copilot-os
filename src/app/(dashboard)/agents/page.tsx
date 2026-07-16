@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Plus, Play, Trash2, Bot } from 'lucide-react'
+import { Plus, Play, Trash2, Bot, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Modal } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import { getAgents, createAgent, deleteAgent, executeAgentPipeline, getAgentDefaults } from '@/services/agents'
@@ -27,7 +27,9 @@ export default function AgentsPage() {
   const [selectedRole, setSelectedRole] = useState<AgentRole>('code-generator')
   const [request, setRequest] = useState('')
   const [running, setRunning] = useState(false)
-  const [pipelineStatus, setPipelineStatus] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [pipelineStatus, setPipelineStatus] = useState<{ agent: string; status: string }[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => { if (user) load() }, [user])
 
@@ -35,18 +37,27 @@ export default function AgentsPage() {
     if (!user) return
     const data = await getAgents(user.id)
     setAgents(data)
+    setLoading(false)
   }
 
   async function handleCreate() {
     if (!user) return
-    await createAgent(user.id, selectedRole)
-    setShowCreate(false)
-    load()
+    try {
+      await createAgent(user.id, selectedRole)
+      setShowCreate(false)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create agent')
+    }
   }
 
   async function handleDelete(id: string) {
-    await deleteAgent(id)
-    load()
+    try {
+      await deleteAgent(id)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete agent')
+    }
   }
 
   async function handleRunPipeline() {
@@ -54,16 +65,22 @@ export default function AgentsPage() {
     setRunning(true)
     setPipelineStatus([])
     const result = await executeAgentPipeline(user.id, request, (agentName, status) => {
-      setPipelineStatus(prev => [...prev, `${agentName}: ${status}`])
+      setPipelineStatus(prev => [...prev.filter(s => s.agent !== agentName), { agent: agentName, status }])
     })
     setRunning(false)
     if (!result.success && result.error) {
-      setPipelineStatus(prev => [...prev, `Error: ${result.error}`])
+      setPipelineStatus(prev => [...prev, { agent: 'Pipeline', status: `Error: ${result.error}` }])
     }
   }
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/50 dark:text-red-400">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 font-medium underline">Dismiss</button>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">AI Agents</h1>
@@ -74,7 +91,14 @@ export default function AgentsPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">
-          {agents.length === 0 ? (
+          {loading ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600" />
+                <p className="mt-2 text-gray-500">Loading agents...</p>
+              </CardContent>
+            </Card>
+          ) : agents.length === 0 ? (
             <Card>
               <CardContent className="py-12 text-center">
                 <Bot className="mx-auto h-8 w-8 text-gray-400" />
@@ -126,9 +150,25 @@ export default function AgentsPage() {
                 <Play className="h-4 w-4" /> Run Pipeline
               </Button>
               {pipelineStatus.length > 0 && (
-                <div className="space-y-1">
+                <div className="space-y-2">
                   {pipelineStatus.map((s, i) => (
-                    <p key={i} className="text-xs text-gray-600 dark:text-gray-400">{s}</p>
+                    <div key={i} className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs dark:border-gray-700">
+                      {s.status === 'running' ? (
+                        <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                      ) : s.status === 'completed' ? (
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      ) : s.status.startsWith('Error') ? (
+                        <AlertCircle className="h-3 w-3 text-red-500" />
+                      ) : (
+                        <Loader2 className="h-3 w-3 text-gray-400" />
+                      )}
+                      <span className="font-medium text-gray-900 dark:text-gray-100">{s.agent}</span>
+                      <span className={`ml-auto ${
+                        s.status === 'running' ? 'text-blue-600' :
+                        s.status === 'completed' ? 'text-green-600' :
+                        s.status.startsWith('Error') ? 'text-red-600' : 'text-gray-500'
+                      }`}>{s.status}</span>
+                    </div>
                   ))}
                 </div>
               )}

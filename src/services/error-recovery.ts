@@ -90,7 +90,7 @@ export async function executeWithRecovery(
             partialData: true,
           }
         }
-      } catch {}
+      } catch (e) { console.error(`Error-recovery fallback tool ${fallbackTool} failed:`, e) }
     }
   }
 

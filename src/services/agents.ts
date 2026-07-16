@@ -2,6 +2,7 @@ import { getSupabase } from '@/database/client'
 import { localStore, hasSupabase } from '@/lib/storage'
 import type { Agent, AgentRole } from '@/types'
 import { generateId, parseError } from '@/lib/utils'
+import { env } from '@/config/env'
 
 const AGENT_DEFAULTS: Record<AgentRole, { name: string; prompt: string; tools: string[] }> = {
   'request-analyzer': {
@@ -123,7 +124,7 @@ export async function executeAgentPipeline(
     for (const agent of agents) {
       onStatus?.(agent.name, 'running')
 
-      const response = await fetch('/api/ai/agent', {
+      const response = await fetch(`${env.app.url}/api/ai/agent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agent, request: currentRequest }),

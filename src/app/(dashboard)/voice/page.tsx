@@ -1,13 +1,25 @@
 'use client'
-import { useState, useRef, useCallback } from 'react'
-import { Mic, Square, Volume2, Play, Pause, Loader2, AlertCircle } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { Mic, Square, Volume2, Loader2, AlertCircle } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Button } from '@/components/ui'
+
+const VOICE_KEY = 'ac_voice'
+
+function loadVoice(): { transcript: string; response: string } {
+  if (typeof window === 'undefined') return { transcript: '', response: '' }
+  try { return JSON.parse(localStorage.getItem(VOICE_KEY) || '{"transcript":"","response":""}') } catch { return { transcript: '', response: '' } }
+}
+
+function saveVoice(transcript: string, response: string) {
+  try { localStorage.setItem(VOICE_KEY, JSON.stringify({ transcript, response })) } catch {}
+}
 
 export default function VoicePage() {
   const [listening, setListening] = useState(false)
-  const [transcript, setTranscript] = useState('')
-  const [response, setResponse] = useState('')
+  const [transcript, setTranscript] = useState(loadVoice().transcript)
+  const [response, setResponse] = useState(loadVoice().response)
   const [processing, setProcessing] = useState(false)
+  const [speaking, setSpeaking] = useState(false)
   const [error, setError] = useState('')
   const recognitionRef = useRef<any>(null)
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : null
@@ -25,15 +37,18 @@ export default function VoicePage() {
     recognition.interimResults = true
     recognition.lang = 'en-US'
 
+    const transcriptRef = { current: '' }
     recognition.onresult = (event: any) => {
       const current = event.resultIndex
-      const transcript = event.results[current][0].transcript
-      setTranscript(transcript)
+      const text = event.results[current][0].transcript
+      transcriptRef.current = text
+      setTranscript(text)
     }
 
     recognition.onend = () => {
       setListening(false)
-      if (transcript.trim()) processVoiceInput(transcript)
+      const text = transcriptRef.current
+      if (text.trim()) processVoiceInput(text)
     }
 
     recognition.onerror = (event: any) => {
@@ -44,7 +59,7 @@ export default function VoicePage() {
     recognitionRef.current = recognition
     recognition.start()
     setListening(true)
-  }, [transcript])
+  }, [])
 
   function stopListening() {
     if (recognitionRef.current) {
@@ -89,6 +104,7 @@ export default function VoicePage() {
           }
         }
         setResponse(result)
+        saveVoice(transcript, result)
         speakText(result)
       }
     } else {
@@ -105,11 +121,15 @@ export default function VoicePage() {
     utterance.pitch = 1.0
     const voices = synth.getVoices()
     if (voices.length > 0) utterance.voice = voices.find(v => v.lang.startsWith('en')) || voices[0]
+    utterance.onstart = () => setSpeaking(true)
+    utterance.onend = () => setSpeaking(false)
+    utterance.onerror = () => setSpeaking(false)
     synth.speak(utterance)
   }
 
   function stopSpeaking() {
     synth?.cancel()
+    setSpeaking(false)
   }
 
   return (
@@ -158,9 +178,16 @@ export default function VoicePage() {
             <div className="mx-auto mt-4 max-w-lg rounded-lg bg-blue-50 p-4 text-left dark:bg-blue-900/30">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-xs text-gray-500">Response:</p>
-                <button onClick={speakText.bind(null, response)} className="text-blue-600 hover:text-blue-700">
-                  <Volume2 className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={speakText.bind(null, response)} className="text-blue-600 hover:text-blue-700">
+                    <Volume2 className="h-4 w-4" />
+                  </button>
+                  {speaking && (
+                    <button onClick={stopSpeaking} className="text-red-600 hover:text-red-700">
+                      <Square className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
               <p className="text-gray-900 dark:text-gray-100">{response}</p>
             </div>

@@ -1,12 +1,12 @@
 'use client'
 import { useState } from 'react'
-import { Brain, Search, BookmarkPlus, Trash2, BookOpen, Link, FileText, MessageSquare, Globe, Image as ImageIcon } from 'lucide-react'
+import { Brain, Search, BookmarkPlus, Trash2, BookOpen } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Button } from '@/components/ui'
 import { generateId, formatDate } from '@/lib/utils'
 
 interface KnowledgeItem {
   id: string
-  type: 'document' | 'web' | 'chat' | 'image' | 'note'
+  type: 'note'
   title: string
   content: string
   source?: string
@@ -16,10 +16,6 @@ interface KnowledgeItem {
 
 const TYPES = [
   { id: 'all', label: 'All', icon: Brain },
-  { id: 'document', label: 'Documents', icon: FileText },
-  { id: 'web', label: 'Web', icon: Globe },
-  { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'image', label: 'Images', icon: ImageIcon },
   { id: 'note', label: 'Notes', icon: BookOpen },
 ]
 
@@ -70,8 +66,8 @@ export default function KnowledgePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Knowledge Base</h1>
-        <p className="text-sm text-gray-500">Searchable memory for documents, research, and notes</p>
+        <h1 className="text-2xl font-bold">Notes</h1>
+        <p className="text-sm text-gray-500">Quick notes saved locally in your browser</p>
       </div>
 
       <div className="flex gap-2">
@@ -102,7 +98,7 @@ export default function KnowledgePage() {
             <Card>
               <CardContent className="py-12 text-center">
                 <Brain className="mx-auto h-8 w-8 text-gray-400" />
-                <p className="mt-2 text-gray-500">No knowledge items yet. Add notes or save research.</p>
+                <p className="mt-2 text-gray-500">No notes yet. Write a quick note to get started.</p>
               </CardContent>
             </Card>
           ) : (
@@ -111,10 +107,7 @@ export default function KnowledgePage() {
                 <CardContent className="flex items-start justify-between gap-3">
                   <div className="flex-1 cursor-pointer" onClick={() => setSelected(item)}>
                     <div className="flex items-center gap-2">
-                      <Badge variant={
-                        item.type === 'document' ? 'info' : item.type === 'web' ? 'success' :
-                        item.type === 'chat' ? 'default' : item.type === 'image' ? 'warning' : 'default'
-                      }>{item.type}</Badge>
+                      <Badge variant="default">{item.type}</Badge>
                       <span className="font-medium text-sm">{item.title}</span>
                       <span className="text-xs text-gray-400">{formatDate(item.createdAt)}</span>
                     </div>

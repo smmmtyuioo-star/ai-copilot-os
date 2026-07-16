@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import { localStore, hasSupabase } from '@/lib/storage'
-import { MessageSquare, Bot, Brain, Activity, Users, Zap } from 'lucide-react'
+import { MessageSquare, Bot, Brain, Activity, Users, Zap, Loader2 } from 'lucide-react'
 
 function getApiCallCount(): number {
   if (typeof window === 'undefined') return 0
@@ -17,7 +17,8 @@ function getApiCallCount(): number {
 
 export default function DashboardPage() {
   const { user } = useAuth()
-  const [stats, setStats] = useState({ conversations: 0, agents: 0, memories: 0, apiCalls: 0 })
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState({ conversations: 0, agents: 0, memories: 0, apiCalls: 0, activeTasks: 0 })
   const [refresh, setRefresh] = useState(0)
 
   useEffect(() => {
@@ -25,7 +26,8 @@ export default function DashboardPage() {
     const agents = localStore.agents.items.length
     const mems = localStore.memories.items.length
     const apiCalls = getApiCallCount()
-    setStats({ conversations: convs, agents: agents, memories: mems, apiCalls })
+    setStats({ conversations: convs, agents: agents, memories: mems, apiCalls, activeTasks: 0 })
+    setLoading(false)
 
     const interval = setInterval(() => setRefresh(n => n + 1), 10000)
     return () => clearInterval(interval)
@@ -33,7 +35,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const apiCalls = getApiCallCount()
-    setStats(prev => ({ ...prev, apiCalls }))
+    setStats(prev => ({ ...prev, apiCalls, activeTasks: 0 }))
+    setLoading(false)
   }, [])
 
   const statItems = [
@@ -41,8 +44,8 @@ export default function DashboardPage() {
     { icon: Bot, label: 'AI Agents', value: String(stats.agents), desc: 'Configured agents' },
     { icon: Brain, label: 'Memory Entries', value: String(stats.memories), desc: 'Stored memories' },
     { icon: Activity, label: 'API Calls', value: String(stats.apiCalls), desc: 'Total tool calls' },
-    { icon: Zap, label: 'Active Tasks', value: String(stats.agents), desc: 'Running automations' },
-    { icon: Users, label: 'Active Users', value: '1', desc: 'Current workspace' },
+    { icon: Zap, label: 'Active Tasks', value: String(stats.activeTasks), desc: 'Running automations' },
+    { icon: Users, label: 'Active Users', value: 'N/A', desc: 'Offline mode — no telemetry' },
   ]
 
   return (
@@ -56,6 +59,9 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {loading ? (
+        <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-blue-500" /></div>
+      ) : (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {statItems.map((stat, i) => {
           const Icon = stat.icon
@@ -75,6 +81,7 @@ export default function DashboardPage() {
           )
         })}
       </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

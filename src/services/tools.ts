@@ -270,8 +270,27 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
     if (!action) return 'Error: action is required'
 
     try {
-      const token = String(args.token || '')
-      if (!token) return 'Error: GitHub token is required — ask the user to provide one'
+      let token = String(args.token || '')
+
+      if (!token) {
+        const { localStore } = await import('@/lib/storage')
+        const apiKeys = localStore.apiKeys.items
+        const githubKey = apiKeys.find(k => (k.provider || '').toLowerCase() === 'github' || k.name.toLowerCase().includes('github'))
+        if (githubKey?.key) token = githubKey.key
+      }
+
+      if (!token && typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('ac_connectors')
+          if (raw) {
+            const connectors = JSON.parse(raw)
+            const github = connectors.find((c: any) => c.provider === 'github' && c.status === 'connected')
+            if (github?.config?.token) token = github.config.token
+          }
+        } catch { /* localStorage not available */ }
+      }
+
+      if (!token) return 'Error: GitHub token is required. Please connect your GitHub account via the Connectors page (Connectors > Add Connector > GitHub).'
 
       const headers: Record<string, string> = {
         Authorization: `Bearer ${token}`,

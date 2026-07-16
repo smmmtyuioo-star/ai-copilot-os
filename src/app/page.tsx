@@ -3,8 +3,10 @@ import { useState, useRef, useEffect } from 'react'
 import { Search, Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch, Paperclip, Code, Wand2, Upload, File, Video, RefreshCw, Edit3, LogOut } from 'lucide-react'
 import { streamAiResponse } from '@/services/chat'
 import { db } from '@/lib/db'
+import { localStore } from '@/lib/storage'
 import type { Message, Conversation } from '@/types'
 import { formatDate, generateId } from '@/lib/utils'
+import { signOut as authSignOut } from '@/services/auth'
 
 const URL_REGEX = /https?:\/\/[^\s]+/g
 const BUILD_COMMAND = /^\/build\s+(.+)$/i
@@ -63,17 +65,34 @@ export default function HomePage() {
   const [searchConv, setSearchConv] = useState('')
   const [editingConv, setEditingConv] = useState<string | null>(null)
   const [renameInput, setRenameInput] = useState('')
+  const [convLoading, setConvLoading] = useState(true)
   const attachRef = useRef<HTMLDivElement>(null)
+  const filteredConvs = conversations.filter(c => !searchConv || c.title.toLowerCase().includes(searchConv.toLowerCase()))
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      setDark(isDark)
-      document.documentElement.classList.toggle('dark', isDark)
+      const saved = localStorage.getItem('ac_dark_mode')
+      if (saved !== null) {
+        const isDark = saved === 'true'
+        setDark(isDark)
+        document.documentElement.classList.toggle('dark', isDark)
+      } else {
+        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+        setDark(isDark)
+        document.documentElement.classList.toggle('dark', isDark)
+      }
+      const savedModel = localStorage.getItem('ac_selected_model')
+      if (savedModel) setSelectedModel(savedModel)
     }
-    loadConversations()
+    loadConversations().then(() => {
+      const savedConv = localStorage.getItem('ac_active_conv')
+      if (savedConv) {
+        setActiveConv(savedConv)
+        db.getMessages(savedConv).then(msgs => setMessages(msgs)).catch(() => {})
+      }
+    })
   }, [])
 
   useEffect(() => {
@@ -95,24 +114,31 @@ export default function HomePage() {
   }, [streaming])
 
   async function loadConversations() {
-    const convs = await db.getConversations()
-    setConversations(convs)
+    try {
+      const convs = await db.getConversations()
+      setConversations(convs)
+    } catch (err) {
+      console.error('Failed to load conversations:', err)
+    }
+    setConvLoading(false)
   }
 
   async function newConversation() {
     const conv: Conversation = {
       id: generateId(), user_id: 'local', title: 'New Chat',
-      model: 'llama-3.3-70b-versatile',
+      model: selectedModel,
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     }
     await db.addConversation(conv)
     setConversations(prev => [conv, ...prev])
     setActiveConv(conv.id)
+    localStorage.setItem('ac_active_conv', conv.id)
     setMessages([])
   }
 
   async function selectConversation(id: string) {
     setActiveConv(id)
+    localStorage.setItem('ac_active_conv', id)
     const msgs = await db.getMessages(id)
     setMessages(msgs)
     setSidebar(false)
@@ -120,15 +146,15 @@ export default function HomePage() {
 
   async function submitRename(id: string) {
     if (!renameInput.trim()) { setEditingConv(null); return }
-    const store = JSON.parse(localStorage.getItem('ac_conversations') || '[]') as any[]
-    const idx = store.findIndex((c: any) => c.id === id)
-    if (idx >= 0) { store[idx].title = renameInput; localStorage.setItem('ac_conversations', JSON.stringify(store)) }
+    await db.updateConversation(id, { title: renameInput })
     setConversations(prev => prev.map(c => c.id === id ? { ...c, title: renameInput } : c))
     setEditingConv(null)
   }
 
   async function handleSignOut() {
-    localStorage.removeItem('ac_user')
+    await authSignOut()
+    localStorage.removeItem('ac_active_conv')
+    localStorage.removeItem('ac_selected_model')
     window.location.href = '/auth/login'
   }
 
@@ -281,12 +307,30 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     abortRef.current = abortController
     const history = prevMsgs.map(m => ({ role: m.role, content: m.content }))
 
-    const fullResponse = await streamAiResponse(
-      history, selectedModel,
-      (token) => setStreamContent(prev => prev + token),
-      (error) => { setStreamContent(`Error: ${error}`); setStreaming(false) },
-      abortController.signal,
-    )
+    // Remove stale messages from DB
+    const toRemove = messages.slice(idx)
+    for (const m of toRemove) {
+      await db.deleteMessage(m.id)
+    }
+
+    let fullResponse: string | null = null
+    try {
+      fullResponse = await streamAiResponse(
+        history, selectedModel,
+        (token) => setStreamContent(prev => prev + token),
+        (error) => { setStreamContent(`Error: ${error}`); setStreaming(false) },
+        abortController.signal,
+      )
+    } catch (err) {
+      const errorMsg: Message = {
+        id: generateId(), conversation_id: convId, role: 'assistant',
+        content: `Error: ${err instanceof Error ? err.message : 'Generation failed'}`,
+        created_at: new Date().toISOString(),
+      }
+      setMessages(prev => [...prev.slice(0, idx), errorMsg])
+      await db.addMessage(errorMsg).catch(() => {})
+      fullResponse = null
+    }
     if (abortRef.current === abortController) abortRef.current = null
     if (fullResponse) {
       const newMsg: Message = {
@@ -322,29 +366,49 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     setStreaming(true)
     setStreamContent('')
 
+    // Remove stale messages from DB
+    const toRemove = messages.slice(idx)
+    for (const m of toRemove) {
+      await db.deleteMessage(m.id)
+    }
+
     const abortController = new AbortController()
     abortRef.current = abortController
     const history = [...kept, editedMsg].map(m => ({ role: m.role, content: m.content }))
 
-    const fullResponse = await streamAiResponse(
-      history, selectedModel,
-      (token) => setStreamContent(prev => prev + token),
-      (error) => { setStreamContent(`Error: ${error}`); setStreaming(false) },
-      abortController.signal,
-    )
+    let fullResponse: string | null = null
+    try {
+      fullResponse = await streamAiResponse(
+        history, selectedModel,
+        (token) => setStreamContent(prev => prev + token),
+        (error) => { setStreamContent(`Error: ${error}`); setStreaming(false) },
+        abortController.signal,
+      )
+    } catch (err) {
+      const errorMsg: Message = {
+        id: generateId(), conversation_id: convId, role: 'assistant',
+        content: `Error: ${err instanceof Error ? err.message : 'Generation failed'}`,
+        created_at: new Date().toISOString(),
+      }
+      const finalMsgs = [...kept, editedMsg, errorMsg]
+      setMessages(finalMsgs)
+      await db.addMessage(editedMsg).catch(() => {})
+      await db.addMessage(errorMsg).catch(() => {})
+      fullResponse = null
+    }
     if (abortRef.current === abortController) abortRef.current = null
 
-    const finalMsgs = [...kept, editedMsg]
     if (fullResponse) {
+      const finalMsgs = [...kept, editedMsg]
       const asstMsg: Message = {
         id: generateId(), conversation_id: convId, role: 'assistant',
         content: fullResponse, created_at: new Date().toISOString(),
       }
       finalMsgs.push(asstMsg)
+      setMessages(finalMsgs)
+      await db.addMessage(editedMsg).catch(() => {})
       await db.addMessage(asstMsg)
     }
-    setMessages(finalMsgs)
-    await db.addMessage(editedMsg)
     setStreaming(false)
     setStreamContent('')
   }
@@ -359,8 +423,17 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
       abortRef.current.abort()
       abortRef.current = null
     }
+    const cancelMsg: Message = {
+      id: generateId(), conversation_id: activeConv || '', role: 'assistant',
+      content: (streamContent || '') + '\n\n_[Generation cancelled]_',
+      created_at: new Date().toISOString(),
+    }
+    if (activeConv) {
+      db.addMessage(cancelMsg).catch(() => {})
+    }
+    setMessages(prev => [...prev, cancelMsg])
     setStreaming(false)
-    setStreamContent(prev => prev + '\n\n[Generation cancelled]')
+    setStreamContent('')
   }
 
   async function handleSend() {
@@ -467,12 +540,24 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     abortRef.current = abortController
     const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
 
-    const fullResponse = await streamAiResponse(
-      history, selectedModel,
-      (token) => setStreamContent(prev => prev + token),
-      (error) => { setStreamContent(`Error: ${error}`); setStreaming(false) },
-      abortController.signal,
-    )
+    let fullResponse: string | null = null
+    try {
+      fullResponse = await streamAiResponse(
+        history, selectedModel,
+        (token) => setStreamContent(prev => prev + token),
+        (error) => { setStreamContent(`Error: ${error}`); setStreaming(false) },
+        abortController.signal,
+      )
+    } catch (err) {
+      const errorMsg: Message = {
+        id: generateId(), conversation_id: convId, role: 'assistant',
+        content: `Error: ${err instanceof Error ? err.message : 'Generation failed'}`,
+        created_at: new Date().toISOString(),
+      }
+      await db.addMessage(errorMsg).catch(() => {})
+      setMessages(prev => [...prev, errorMsg])
+      fullResponse = null
+    }
     if (fullResponse) {
       const asstMsg: Message = {
         id: generateId(), conversation_id: convId, role: 'assistant',
@@ -482,7 +567,8 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
       setMessages(prev => [...prev, asstMsg])
     }
     if (abortRef.current === abortController) abortRef.current = null
-    setStreaming(false); setStreamContent('')
+    setStreaming(false)
+    setStreamContent('')
   }
 
   async function handleInputChange(value: string) {
@@ -512,26 +598,32 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
   function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     if (!files) return
+
+    const BINARY_EXTENSIONS = /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|gz|tar|exe|dll|so|bin|dat|iso|img)$/i
+    const BINARY_MIME = /^(application\/(pdf|vnd\.(openxmlformats-officedocument|msword|ms-excel|ms-powerpoint)|octet-stream|x-zip|x-rar|x-7z))/
+
     Array.from(files).forEach(file => {
+      if (file.type.startsWith('image/')) {
+        setInput(prev => prev + `\n[Attached image: ${file.name} (${(file.size / 1024).toFixed(1)} KB) — text preview not available, requires vision model]\n`)
+        return
+      }
+      if (file.type.startsWith('video/')) {
+        setInput(prev => prev + `\n[Attached video: ${file.name} (${(file.size / 1024).toFixed(1)} KB) — transcript requires video processing API]\n`)
+        return
+      }
+      if (BINARY_EXTENSIONS.test(file.name) || BINARY_MIME.test(file.type)) {
+        setInput(prev => prev + `\n[Attached: ${file.name} (${(file.size / 1024).toFixed(1)} KB) — binary file, content preview not available]\n`)
+        return
+      }
       const reader = new FileReader()
       reader.onload = () => {
         const content = reader.result as string
-        if (file.type.startsWith('image/')) {
-          setInput(prev => prev + `\n[Attached image: ${file.name} — text preview not available, requires vision model]\n`)
-        } else if (file.type.startsWith('video/')) {
-          setInput(prev => prev + `\n[Attached video: ${file.name} — transcript requires video processing API]\n`)
-        } else {
-          setInput(prev => prev + `\n[Attached: ${file.name}]\n${content.slice(0, 50000)}\n`)
-        }
+        setInput(prev => prev + `\n[Attached: ${file.name}]\n${content.slice(0, 50000)}\n`)
       }
-      if (file.type.startsWith('text/') || file.type.includes('json') || file.type.includes('javascript') || file.name.endsWith('.md') || file.name.endsWith('.csv')) {
-        reader.readAsText(file)
-      } else if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-        // readAsDataURL needed to trigger onload, but content discarded — see limitation below
-        reader.readAsDataURL(file)
-      } else {
-        reader.readAsText(file)
+      reader.onerror = () => {
+        setInput(prev => prev + `\n[Attached: ${file.name} — failed to read file]\n`)
       }
+      reader.readAsText(file)
     })
     setShowAttach(false)
     e.target.value = ''
@@ -542,8 +634,10 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
   }
 
   function toggleDark() {
-    setDark(!dark)
-    document.documentElement.classList.toggle('dark')
+    const newDark = !dark
+    setDark(newDark)
+    document.documentElement.classList.toggle('dark', newDark)
+    localStorage.setItem('ac_dark_mode', String(newDark))
   }
 
   return (
@@ -625,7 +719,9 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                   </a>
                 )
               })}
-              {conversations.length > 0 && (
+              {convLoading ? (
+                <div className="px-3 py-4 text-center"><Loader2 className="mx-auto h-4 w-4 animate-spin text-gray-400" /></div>
+              ) : conversations.length > 0 ? (
                 <>
                   <p className="px-3 py-1 mt-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">Conversations</p>
                   <div className="relative px-3 mb-1">
@@ -633,7 +729,9 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                     <input value={searchConv} onChange={e => setSearchConv(e.target.value)}
                       placeholder="Search chats..." className="w-full rounded-md border border-gray-200 py-1 pl-6 pr-2 text-xs dark:border-gray-700 dark:bg-gray-800" />
                   </div>
-                  {conversations.filter(c => !searchConv || c.title.toLowerCase().includes(searchConv.toLowerCase())).map(c => (
+                  {filteredConvs.length === 0 && searchConv ? (
+                    <p className="px-3 py-2 text-xs text-gray-400 text-center">No chats found</p>
+                  ) : filteredConvs.map(c => (
                     <div key={c.id} className="group flex items-center gap-1 px-3 py-1.5">
                       {editingConv === c.id ? (
                         <input value={renameInput} onChange={e => setRenameInput(e.target.value)}
@@ -657,7 +755,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                     </div>
                   ))}
                 </>
-              )}
+              ) : null}
             </div>
             <div className="border-t border-gray-200 p-3 space-y-2 dark:border-gray-800">
               <button onClick={handleSignOut} className="flex items-center gap-2 text-xs text-gray-400 hover:text-red-500 w-full">

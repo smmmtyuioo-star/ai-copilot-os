@@ -42,6 +42,8 @@ export default function BuildPage() {
       setPrompt(stored)
       localStorage.removeItem('ac_build_prompt')
     }
+    const saved = localStorage.getItem('ac_build_history')
+    if (saved) { try { setBuilds(JSON.parse(saved)) } catch {} }
   }, [])
 
   async function startBuild() {
@@ -102,7 +104,7 @@ export default function BuildPage() {
     // Final preview generation
     generateLivePreview()
 
-    setBuilds(prev => [{ id: generateId(), prompt: prompt.slice(0, 60), date: new Date().toLocaleDateString() }, ...prev].slice(0, 10))
+    setBuilds(prev => { const next = [{ id: generateId(), prompt: prompt.slice(0, 60), date: new Date().toLocaleDateString() }, ...prev].slice(0, 10); localStorage.setItem('ac_build_history', JSON.stringify(next)); return next })
     setRunning(false)
   }
 

@@ -1,5 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { Loader2 } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui'
 import { Input } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
@@ -19,12 +21,21 @@ const MODELS = [
 ]
 
 export default function SettingsPage() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
+  const { theme, setTheme } = useTheme()
   const [name, setName] = useState(user?.name || '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
   const [error, setError] = useState('')
+  const [selectedModel, setSelectedModel] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return localStorage.getItem('ac_default_model') || 'llama-3.3-70b-versatile'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('ac_default_model', selectedModel)
+  }, [selectedModel])
 
   async function handleSave() {
     setSaving(true)
@@ -34,6 +45,14 @@ export default function SettingsPage() {
     setSaving(false)
     if (result.success) { setSaved(true); setTimeout(() => setSaved(false), 3000) }
     else setError(result.error || 'Failed to save profile')
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    )
   }
 
   return (
@@ -76,9 +95,14 @@ export default function SettingsPage() {
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">{group.label}</p>
               <div className="flex flex-wrap gap-2">
                 {group.models.map(m => (
-                  <span key={m.id} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs dark:border-gray-600">
+                  <button key={m.id} onClick={() => setSelectedModel(m.id)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs ${
+                      selectedModel === m.id
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                        : 'border-gray-300 text-gray-600 hover:border-gray-400 dark:border-gray-600 dark:text-gray-400'
+                    }`}>
                     {m.name}
-                  </span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -91,10 +115,16 @@ export default function SettingsPage() {
           <CardTitle>Theme</CardTitle>
           <CardDescription>Choose your preferred appearance</CardDescription>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Use the theme toggle in the header to switch between light, dark, and system mode.
-          </p>
+        <CardContent className="space-y-3">
+          {['light', 'dark', 'system'].map(mode => (
+            <label key={mode} className="flex items-center gap-3 cursor-pointer">
+              <input type="radio" name="theme" value={mode}
+                checked={theme === mode}
+                onChange={() => setTheme(mode)}
+                className="h-4 w-4 text-blue-600" />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">{mode}</span>
+            </label>
+          ))}
         </CardContent>
       </Card>
     </div>

@@ -10,7 +10,11 @@ export const db = {
   async getConversations(userId?: string): Promise<Conversation[]> {
     if (hasSupabase) {
       const supabase = getSupabase()
-      if (!supabase) return localStore.conversations.items as unknown as Conversation[]
+      if (!supabase) return localStore.conversations.items.map(c => ({
+        id: c.id, user_id: userId || 'local', title: c.title,
+        model: c.model || 'llama-3.3-70b-versatile',
+        created_at: c.createdAt, updated_at: c.createdAt,
+      }))
       const { data } = await supabase.from('conversations').select('*').eq('user_id', userId).order('updated_at', { ascending: false })
       return data || []
     }
@@ -32,6 +36,14 @@ export const db = {
     localStore.conversations.add({ id: conv.id, title: conv.title, model: conv.model, createdAt: conv.created_at })
   },
 
+  async updateConversation(id: string, updates: Partial<{ title: string; model: string }>): Promise<void> {
+    if (hasSupabase) {
+      const supabase = getSupabase()
+      if (supabase) { await supabase.from('conversations').update(updates).eq('id', id); return }
+    }
+    localStore.conversations.update(id, updates)
+  },
+
   async deleteConversation(id: string): Promise<void> {
     if (hasSupabase) {
       const supabase = getSupabase()
@@ -43,13 +55,23 @@ export const db = {
   async getMessages(conversationId: string): Promise<Message[]> {
     if (hasSupabase) {
       const supabase = getSupabase()
-      if (!supabase) return localStore.messages.items.filter(m => m.conversationId === conversationId) as unknown as Message[]
+      if (!supabase) return localStore.messages.items
+        .filter(m => m.conversationId === conversationId)
+        .map(m => ({ id: m.id, conversation_id: m.conversationId, role: m.role as Message['role'], content: m.content, created_at: m.createdAt }))
       const { data } = await supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true })
       return data || []
     }
     return localStore.messages.items
       .filter(m => m.conversationId === conversationId)
       .map(m => ({ id: m.id, conversation_id: m.conversationId, role: m.role as 'user' | 'assistant', content: m.content, created_at: m.createdAt }))
+  },
+
+  async deleteMessage(id: string): Promise<void> {
+    if (hasSupabase) {
+      const supabase = getSupabase()
+      if (supabase) { await supabase.from('messages').delete().eq('id', id); return }
+    }
+    localStore.messages.remove(id)
   },
 
   async addMessage(msg: Message): Promise<void> {

@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { FileText, FileImage, FileSpreadsheet, Presentation, FileCode, PenTool, BookOpen, Eye, Plus, Trash2, Play, Copy, Wand2, Loader2, CheckCircle2, AlertCircle, Settings } from 'lucide-react'
+import { FileText, Plus, Trash2, Play, Copy, Wand2, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Modal, Input } from '@/components/ui'
 import { generateId } from '@/lib/utils'
 

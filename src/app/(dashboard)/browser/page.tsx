@@ -1,11 +1,22 @@
 'use client'
 import { useState } from 'react'
-import { Globe, Search, ArrowRight, AlertCircle } from 'lucide-react'
+import { Globe, Search, AlertCircle } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui'
 
+const BROWSE_KEY = 'ac_browse'
+
+function loadBrowse(): { url: string; result: string | null } {
+  if (typeof window === 'undefined') return { url: '', result: null }
+  try { return JSON.parse(localStorage.getItem(BROWSE_KEY) || '{"url":"","result":null}') } catch { return { url: '', result: null } }
+}
+
+function saveBrowse(url: string, result: string | null) {
+  try { localStorage.setItem(BROWSE_KEY, JSON.stringify({ url, result })) } catch {}
+}
+
 export default function BrowserPage() {
-  const [url, setUrl] = useState('')
-  const [result, setResult] = useState<string | null>(null)
+  const [url, setUrl] = useState(loadBrowse().url)
+  const [result, setResult] = useState<string | null>(loadBrowse().result)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -26,6 +37,7 @@ export default function BrowserPage() {
         setError(data.error || 'Failed to fetch URL')
       } else {
         setResult(data.content)
+        saveBrowse(url, data.content)
       }
     } catch (err) {
       setError('Failed to connect. Check the URL and try again.')
@@ -65,6 +77,15 @@ export default function BrowserPage() {
           <CardContent className="flex items-start gap-3 text-red-600">
             <AlertCircle className="h-5 w-5 shrink-0" />
             <p className="text-sm">{error}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {!result && !error && !loading && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Globe className="mx-auto h-8 w-8 text-gray-400" />
+            <p className="mt-2 text-sm text-gray-500">Enter a URL to fetch content</p>
           </CardContent>
         </Card>
       )}

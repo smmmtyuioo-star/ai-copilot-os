@@ -19,12 +19,12 @@ function createStore<T extends { id: string }>(key: string): Store<T> {
     try {
       const data = localStorage.getItem(`ac_${key}`)
       return data ? JSON.parse(data) : []
-    } catch { return [] }
+    } catch (e) { console.error(`Storage: failed to read ac_${key}:`, e); return [] }
   }
 
   const saveItems = (items: T[]) => {
     if (typeof window === 'undefined') return
-    try { localStorage.setItem(`ac_${key}`, JSON.stringify(items)) } catch {}
+    try { localStorage.setItem(`ac_${key}`, JSON.stringify(items)) } catch (e) { console.error(`Storage: failed to write ac_${key}:`, e) }
   }
 
   return {

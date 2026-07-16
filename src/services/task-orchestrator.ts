@@ -45,6 +45,8 @@ export async function orchestrate(input: OrchestratorInput): Promise<Orchestrato
 
   const addStep = (step: string, detail: string) => steps.push({ step, detail })
 
+  try {
+
   addStep('parse', 'Analyzing request and context')
 
   const classification = await classifyIntent(input.message)
@@ -191,14 +193,27 @@ export async function orchestrate(input: OrchestratorInput): Promise<Orchestrato
     content += '\n\n' + warnings.map(w => `[Note: ${w}]`).join('\n')
   }
 
-  return {
-    content,
-    steps,
-    intent: classification.intent,
-    tier: tierConfig.tier,
-    format: formatConfig.format,
-    assumptions,
-    warnings,
-    profileLearned,
+    return {
+      content,
+      steps,
+      intent: classification.intent,
+      tier: tierConfig.tier,
+      format: formatConfig.format,
+      assumptions,
+      warnings,
+      profileLearned,
+    }
+  } catch (err) {
+    console.error('Task orchestrator failed at step:', steps[steps.length - 1]?.step || 'unknown', err)
+    return {
+      content: `I encountered an error while processing your request. Please try rephrasing.`,
+      steps: [...steps, { step: 'error', detail: err instanceof Error ? err.message : 'Unknown error' }],
+      intent: 'factual' as any,
+      tier: 'fast',
+      format: 'text',
+      assumptions,
+      warnings: ['An internal error occurred. Please try again.'],
+      profileLearned,
+    }
   }
 }

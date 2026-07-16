@@ -157,7 +157,7 @@ export async function classifyIntent(
           }
         }
       }
-    } catch {}
+    } catch (e) { console.error('Intent classifier LLM fallback failed:', e) }
   }
 
   return {

@@ -130,7 +130,7 @@ export async function prepareContext(
           relevant.map(m => `- ${m.content}`).join('\n')
         result.injectedMemories = relevant.length
       }
-    } catch {}
+    } catch (e) { console.error('Context memory search failed:', e) }
   }
 
   const memoryTokens = memoryContext ? estimateTokens(memoryContext) : 0

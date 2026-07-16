@@ -173,25 +173,25 @@ export async function resumeAgentLoop(
     if (config.mcpEndpoints) {
       for (const ep of config.mcpEndpoints) {
         const connection = await connectMCPEndpoint(ep)
-        for (const t of connection.tools) {
-          const mcpToolName = `mcp_${ep.id}_${t.name}`.replace(/[^a-zA-Z0-9_-]/g, '_')
-          mcpToolMap.set(mcpToolName, ep.id)
+        if (connection.success && connection.tools) {
+          for (const t of connection.tools) {
+            const mcpToolName = `mcp_${ep.id}_${t.name}`.replace(/[^a-zA-Z0-9_-]/g, '_')
+            mcpToolMap.set(mcpToolName, ep.id)
+          }
         }
       }
     }
 
     const mcpEndpointId = mcpToolMap.get(toolCall.function.name)
     if (mcpEndpointId) {
-      try {
-        const originalToolName = toolCall.function.name.replace(`mcp_${mcpEndpointId}_`, '')
-        const mcpResult = await executeMCPTool(mcpEndpointId, originalToolName, args)
-        if (mcpResult && mcpResult.content && Array.isArray(mcpResult.content)) {
-          result = mcpResult.content.map((c: any) => c.text || JSON.stringify(c)).join('\n')
-        } else {
-          result = JSON.stringify(mcpResult)
-        }
-      } catch (err: any) {
-        result = `Error: MCP tool execution failed: ${err.message}`
+      const originalToolName = toolCall.function.name.replace(`mcp_${mcpEndpointId}_`, '')
+      const mcpResult = await executeMCPTool(mcpEndpointId, originalToolName, args)
+      if (mcpResult.success && mcpResult.data?.content && Array.isArray(mcpResult.data.content)) {
+        result = mcpResult.data.content.map((c: any) => c.text || JSON.stringify(c)).join('\n')
+      } else if (mcpResult.success) {
+        result = JSON.stringify(mcpResult.data)
+      } else {
+        result = `Error: MCP tool execution failed: ${mcpResult.error}`
       }
     } else {
       result = await executeTool(toolCall.function.name, args, context)
@@ -228,8 +228,8 @@ export async function runAgentLoop(config: AgentLoopConfig): Promise<AgentLoopRe
   if (mcpEndpoints && mcpEndpoints.length > 0) {
     for (const ep of mcpEndpoints) {
       if (ep.status !== 'active') continue
-      try {
-        const connection = await connectMCPEndpoint(ep)
+      const connection = await connectMCPEndpoint(ep)
+      if (connection.success && connection.tools) {
         for (const t of connection.tools) {
           const mcpToolName = `mcp_${ep.id}_${t.name}`.replace(/[^a-zA-Z0-9_-]/g, '_')
           mcpToolMap.set(mcpToolName, ep.id)
@@ -242,8 +242,8 @@ export async function runAgentLoop(config: AgentLoopConfig): Promise<AgentLoopRe
             }
           })
         }
-      } catch (err) {
-        console.error(`Failed to connect to MCP endpoint ${ep.name}:`, err)
+      } else {
+        console.error(`MCP connect failed for ${ep.name}:`, connection.error)
       }
     }
   }
@@ -307,19 +307,14 @@ export async function runAgentLoop(config: AgentLoopConfig): Promise<AgentLoopRe
         let result = ''
         const mcpEndpointId = mcpToolMap.get(toolCall.function.name)
         if (mcpEndpointId) {
-          try {
-            // Un-prefix the tool name
-            const originalToolName = toolCall.function.name.replace(`mcp_${mcpEndpointId}_`, '')
-            const mcpResult = await executeMCPTool(mcpEndpointId, originalToolName, args)
-            
-            // Format MCP results which are typically an array of content blocks
-            if (mcpResult && mcpResult.content && Array.isArray(mcpResult.content)) {
-              result = mcpResult.content.map((c: any) => c.text || JSON.stringify(c)).join('\n')
-            } else {
-              result = JSON.stringify(mcpResult)
-            }
-          } catch (err: any) {
-            result = `Error: MCP tool execution failed: ${err.message}`
+          const originalToolName = toolCall.function.name.replace(`mcp_${mcpEndpointId}_`, '')
+          const mcpResult = await executeMCPTool(mcpEndpointId, originalToolName, args)
+          if (mcpResult.success && mcpResult.data?.content && Array.isArray(mcpResult.data.content)) {
+            result = mcpResult.data.content.map((c: any) => c.text || JSON.stringify(c)).join('\n')
+          } else if (mcpResult.success) {
+            result = JSON.stringify(mcpResult.data)
+          } else {
+            result = `Error: MCP tool execution failed: ${mcpResult.error}`
           }
         } else {
           result = await executeTool(toolCall.function.name, args, context)

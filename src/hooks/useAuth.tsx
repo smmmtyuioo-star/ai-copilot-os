@@ -18,10 +18,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    getCurrentUser().then(u => {
-      setUser(u)
-      setLoading(false)
-    })
+    getCurrentUser()
+      .then(u => { setUser(u); setLoading(false) })
+      .catch(() => setLoading(false))
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
@@ -43,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     await signOut()
     setUser(null)
+    window.location.href = '/auth/login'
   }, [])
 
   return (

@@ -2,33 +2,37 @@ import { NextRequest, NextResponse } from 'next/server'
 import { taskQueue, workers } from '@/lib/queue/task-queue'
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const taskId = searchParams.get('taskId')
-  const workerId = searchParams.get('workerId')
-  const status = searchParams.get('status')
+  try {
+    const { searchParams } = new URL(request.url)
+    const taskId = searchParams.get('taskId')
+    const workerId = searchParams.get('workerId')
+    const status = searchParams.get('status')
 
-  if (taskId) {
-    const task = taskQueue.getTask(taskId)
-    if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
-    return NextResponse.json(task)
+    if (taskId) {
+      const task = taskQueue.getTask(taskId)
+      if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+      return NextResponse.json(task)
+    }
+
+    if (workerId) {
+      const worker = taskQueue.getWorker(workerId)
+      if (!worker) return NextResponse.json({ error: 'Worker not found' }, { status: 404 })
+      return NextResponse.json(worker)
+    }
+
+    if (status) {
+      const tasks = taskQueue.getTasksByStatus(status as any)
+      return NextResponse.json({ tasks, count: tasks.length })
+    }
+
+    return NextResponse.json({
+      tasks: taskQueue.getAllTasks().slice(0, 50),
+      workers: taskQueue.getAllWorkers(),
+      stats: taskQueue.getStats(),
+    })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to query queue' }, { status: 500 })
   }
-
-  if (workerId) {
-    const worker = taskQueue.getWorker(workerId)
-    if (!worker) return NextResponse.json({ error: 'Worker not found' }, { status: 404 })
-    return NextResponse.json(worker)
-  }
-
-  if (status) {
-    const tasks = taskQueue.getTasksByStatus(status as any)
-    return NextResponse.json({ tasks, count: tasks.length })
-  }
-
-  return NextResponse.json({
-    tasks: taskQueue.getAllTasks().slice(0, 50),
-    workers: taskQueue.getAllWorkers(),
-    stats: taskQueue.getStats(),
-  })
 }
 
 export async function POST(request: NextRequest) {
@@ -54,15 +58,19 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const workerId = searchParams.get('workerId')
+  try {
+    const { searchParams } = new URL(request.url)
+    const workerId = searchParams.get('workerId')
 
-  if (workerId) {
-    const success = taskQueue.unregisterWorker(workerId)
-    return NextResponse.json({ success, message: success ? 'Worker stopped' : 'Worker not found' })
+    if (workerId) {
+      const success = taskQueue.unregisterWorker(workerId)
+      return NextResponse.json({ success, message: success ? 'Worker stopped' : 'Worker not found' })
+    }
+
+    return NextResponse.json({ error: 'Worker ID required' }, { status: 400 })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to delete worker' }, { status: 500 })
   }
-
-  return NextResponse.json({ error: 'Worker ID required' }, { status: 400 })
 }
 
 export async function PATCH(request: NextRequest) {

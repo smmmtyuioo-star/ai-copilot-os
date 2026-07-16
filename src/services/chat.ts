@@ -142,7 +142,7 @@ export async function streamAiResponse(
             fullContent += content
             onToken?.(content)
           }
-        } catch {}
+        } catch (e) { console.error('Chat stream: failed to parse SSE chunk:', e) }
       }
     }
 

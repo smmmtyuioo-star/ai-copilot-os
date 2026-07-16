@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { Search, Brain, KeyRound, LogIn, AlertTriangle, Copy, Check, Eye, EyeOff, MessageSquare, Clock } from 'lucide-react'
-import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Input } from '@/components/ui'
+import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Input, Modal } from '@/components/ui'
 import { formatDate, truncate } from '@/lib/utils'
 import { localStore } from '@/lib/storage'
 import { generateCredentials, verifyCredentials } from '@/lib/credentials'
@@ -122,6 +122,7 @@ export default function MemoryPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Memory Vault</h1>
           <p className="text-sm text-gray-500">Your personal chat history — secured with auto-generated credentials</p>
+          <p className="mt-1 text-xs text-gray-400">Credentials are stored locally in your browser. This is a basic access control, not a security boundary.</p>
         </div>
 
         <Card>
@@ -285,17 +286,4 @@ export default function MemoryPage() {
   )
 }
 
-function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
-  if (!open) return null
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
-        </div>
-        <div className="px-6 pb-6">{children}</div>
-      </div>
-    </div>
-  )
-}
+

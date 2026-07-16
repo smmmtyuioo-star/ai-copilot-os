@@ -1,15 +1,26 @@
 'use client'
 import { useState } from 'react'
-import { Sparkles, Loader2, AlertCircle, Image, Download } from 'lucide-react'
+import { Sparkles, AlertCircle, Download } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Button, Input } from '@/components/ui'
 import { generateId } from '@/lib/utils'
+
+const IMG_KEY = 'ac_img_history'
+
+function loadImgHistory(): { prompt: string; date: string }[] {
+  if (typeof window === 'undefined') return []
+  try { return JSON.parse(localStorage.getItem(IMG_KEY) || '[]') } catch { return [] }
+}
+
+function saveImgHistory(history: { prompt: string; date: string }[]) {
+  try { localStorage.setItem(IMG_KEY, JSON.stringify(history)) } catch {}
+}
 
 export default function ImageStudioPage() {
   const [prompt, setPrompt] = useState('')
   const [generating, setGenerating] = useState(false)
   const [result, setResult] = useState('')
   const [error, setError] = useState('')
-  const [history, setHistory] = useState<{ prompt: string; date: string }[]>([])
+  const [history, setHistory] = useState<{ prompt: string; date: string }[]>(loadImgHistory)
 
   async function handleGenerate() {
     if (!prompt.trim()) return
@@ -44,7 +55,7 @@ export default function ImageStudioPage() {
           try { const parsed = JSON.parse(data); output += parsed.choices?.[0]?.delta?.content || ''; setResult(prev => prev + (parsed.choices?.[0]?.delta?.content || '')) } catch {}
         }
       }
-      setHistory(prev => [{ prompt, date: new Date().toLocaleTimeString() }, ...prev].slice(0, 20))
+      setHistory(prev => { const next = [{ prompt, date: new Date().toLocaleTimeString() }, ...prev].slice(0, 20); saveImgHistory(next); return next })
     } else {
       setError('Generation failed. Check your API key.')
     }
@@ -54,8 +65,8 @@ export default function ImageStudioPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Image Studio</h1>
-        <p className="text-sm text-gray-500">AI-powered image description and generation prompts</p>
+        <h1 className="text-2xl font-bold">AI Visual Description Generator</h1>
+        <p className="text-sm text-gray-500">Generate detailed visual descriptions and creative prompts from text</p>
       </div>
 
       <Card className="bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800">
@@ -71,7 +82,7 @@ export default function ImageStudioPage() {
       <Card>
         <CardHeader>
           <CardTitle>Describe an Image</CardTitle>
-          <CardDescription>Describe what you want to see, and AI will create a detailed visual description</CardDescription>
+          <CardDescription>Describe the scene you have in mind, and AI will generate a detailed visual description</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">
