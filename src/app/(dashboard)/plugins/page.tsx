@@ -55,6 +55,7 @@ export default function PluginsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [action, setAction] = useState<PluginAction | null>(null)
   const [filter, setFilter] = useState('all')
+  const [pluginSearch, setPluginSearch] = useState('')
 
   useEffect(() => {
     const installed = JSON.parse(localStorage.getItem('ac_plugins') || '[]')
@@ -139,29 +140,41 @@ export default function PluginsPage() {
           <CardDescription>Search for plugins in the marketplace</CardDescription>
           <div className="relative mt-2">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search plugins (e.g. code, translate, export...)"
-              onChange={e => {
-                const q = e.target.value.toLowerCase()
-                const results = document.getElementById('plugin-search-results')
-                if (results) {
-                  results.innerHTML = ''
-                  if (q.length < 2) return
-                  const matches = AVAILABLE_PLUGINS.filter(p => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.category.toLowerCase().includes(q))
-                  matches.slice(0, 5).forEach(p => {
-                    const div = document.createElement('div')
-                    div.className = 'flex items-center justify-between p-2 rounded-lg border border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
-                    const installed = plugins.find(x => x.id === p.id)?.installed
-                    div.innerHTML = `<div class="flex items-center gap-2"><span>${p.icon}</span><span class="text-sm font-medium">${p.name}</span><span class="text-xs text-gray-400">${p.category}</span></div><button class="text-xs ${installed ? 'text-green-600' : 'text-blue-600 hover:underline'}">${installed ? 'Installed' : 'Install'}</button>`
-                    div.querySelector('button')?.addEventListener('click', () => { if (!installed) install(p.id); results.innerHTML = ''; (e.target as HTMLInputElement).value = '' })
-                    results.appendChild(div)
-                  })
-                  if (matches.length === 0) results.innerHTML = '<p class="text-xs text-gray-400 py-2 text-center">No plugins found</p>'
-                }
-              }}
-              className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm dark:border-gray-600 dark:bg-gray-700"
-            />
+            <input value={pluginSearch} onChange={e => setPluginSearch(e.target.value)}
+              placeholder="Search plugins (e.g. code, translate, export...)"
+              className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm dark:border-gray-600 dark:bg-gray-700" />
           </div>
-          <div id="plugin-search-results" className="mt-2 space-y-1" />
+          {pluginSearch.length >= 2 && (
+            <div className="mt-2 space-y-1">
+              {AVAILABLE_PLUGINS.filter(p =>
+                p.name.toLowerCase().includes(pluginSearch) ||
+                p.description.toLowerCase().includes(pluginSearch) ||
+                p.category.toLowerCase().includes(pluginSearch)
+              ).slice(0, 5).map(p => {
+                const installed = plugins.find(x => x.id === p.id)?.installed
+                return (
+                  <div key={p.id} className="flex items-center justify-between p-2 rounded-lg border border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <div className="flex items-center gap-2">
+                      <span>{p.icon}</span>
+                      <span className="text-sm font-medium">{p.name}</span>
+                      <span className="text-xs text-gray-400">{p.category}</span>
+                    </div>
+                    <button onClick={() => { if (!installed) install(p.id); setPluginSearch('') }}
+                      className={`text-xs ${installed ? 'text-green-600' : 'text-blue-600 hover:underline'}`}>
+                      {installed ? 'Installed' : 'Install'}
+                    </button>
+                  </div>
+                )
+              })}
+              {AVAILABLE_PLUGINS.filter(p =>
+                p.name.toLowerCase().includes(pluginSearch) ||
+                p.description.toLowerCase().includes(pluginSearch) ||
+                p.category.toLowerCase().includes(pluginSearch)
+              ).length === 0 && (
+                <p className="text-xs text-gray-400 py-2 text-center">No plugins found</p>
+              )}
+            </div>
+          )}
         </CardHeader>
       </Card>
 

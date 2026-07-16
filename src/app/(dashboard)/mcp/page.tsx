@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Plus, Network, Trash2, Wifi, WifiOff, CheckCircle2, AlertCircle, Play, Zap, Server, Database, Globe, Bot, Code, Brain, Search, BookOpen, Sparkles, ExternalLink } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Modal } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
@@ -77,8 +77,44 @@ export default function MCPPage() {
   const [selectedPreset, setSelectedPreset] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const monitorRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  useEffect(() => { if (user) load() }, [user])
+  useEffect(() => { if (user) { load(); startHealthMonitor() }; return () => stopHealthMonitor() }, [user])
+
+  async function startHealthMonitor() {
+    monitorRef.current = setInterval(async () => {
+      for (const ep of endpoints) {
+        const startTime = Date.now()
+        try {
+          const fullUrl = `${ep.protocol}://${ep.url}`
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 5000)
+          const response = await fetch('/api/browser/fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: fullUrl }),
+            signal: controller.signal,
+          })
+          clearTimeout(timeout)
+          const ms = Date.now() - startTime
+          setTestResults(prev => ({ ...prev, [ep.id]: { ok: response.ok, message: response.ok ? `Connected in ${ms}ms` : `HTTP ${response.status} (${ms}ms)` } }))
+          if (ep.status !== 'active') updateEndpointStatus(ep.id, 'active')
+        } catch {
+          const ms = Date.now() - startTime
+          setTestResults(prev => ({ ...prev, [ep.id]: { ok: false, message: `Unreachable (${ms}ms)` } }))
+          if (ep.status !== 'inactive') updateEndpointStatus(ep.id, 'inactive')
+        }
+      }
+    }, 30000)
+  }
+
+  function stopHealthMonitor() {
+    if (monitorRef.current) { clearInterval(monitorRef.current); monitorRef.current = null }
+  }
+
+  async function updateEndpointStatus(id: string, status: MCPEndpoint['status']) {
+    setEndpoints(prev => prev.map(e => e.id === id ? { ...e, status } : e))
+  }
 
   async function load() {
     if (!user) return

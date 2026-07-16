@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process'
 import * as net from 'net'
+import { request } from 'http'
 
 interface PreviewInstance {
   process: ChildProcess
@@ -7,9 +8,8 @@ interface PreviewInstance {
   url: string
 }
 
-const previewInstances = new Map<string, PreviewInstance>() // Keyed by projectId or conversationId
+const previewInstances = new Map<string, PreviewInstance>()
 
-// Simple getPort without external dependency
 async function getAvailablePort(startPort: number = 3000): Promise<number> {
   const net = await import('net')
   return new Promise((resolve) => {
@@ -22,6 +22,23 @@ async function getAvailablePort(startPort: number = 3000): Promise<number> {
       resolve(getAvailablePort(startPort + 1))
     })
   })
+}
+
+async function waitForPort(port: number, host: string = 'localhost', timeoutMs: number = 30000): Promise<void> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const req = request({ hostname: host, port, path: '/', method: 'HEAD', timeout: 1000 }, (res) => resolve())
+        req.on('error', () => reject())
+        req.end()
+      })
+      return
+    } catch {
+      await new Promise(r => setTimeout(r, 500))
+    }
+  }
+  throw new Error(`Server on port ${port} did not respond within ${timeoutMs}ms`)
 }
 
 export async function startPreviewServer(id: string, workdir: string, command: string = 'npm run dev'): Promise<{ url: string; port: number }> {
@@ -40,8 +57,6 @@ export async function startPreviewServer(id: string, workdir: string, command: s
     shell: true,
   })
 
-  await new Promise(resolve => setTimeout(resolve, 3000))
-
   proc.on('error', (err) => {
     console.error(`Preview server ${id} error:`, err)
   })
@@ -51,6 +66,9 @@ export async function startPreviewServer(id: string, workdir: string, command: s
   })
 
   previewInstances.set(id, { process: proc, port, url })
+
+  // Wait for the dev server to actually respond before returning
+  await waitForPort(port, 'localhost', 30000)
 
   return { url, port }
 }
