@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'child_process'
+import * as net from 'net'
 
 interface PreviewInstance {
   process: ChildProcess

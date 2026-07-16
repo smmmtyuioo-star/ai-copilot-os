@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Plus, Trash2, Upload, Puzzle, Wand2, Paperclip } from 'lucide-react'
+import { Send, Bot, User, Plus, Trash2, Upload, Puzzle, Wand2, Paperclip, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import { streamAiResponse, saveMessage, getMessages, getConversations, createConversation, deleteConversation } from '@/services/chat'

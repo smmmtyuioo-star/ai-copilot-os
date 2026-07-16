@@ -3,9 +3,15 @@ import { generateId } from '@/lib/utils'
 import { localStore } from '@/lib/storage'
 import { ok, fail, serverError } from '@/lib/api-utils'
 
+function maskKey(key: string): string {
+  if (key.length <= 8) return '****'
+  return key.slice(0, 4) + '****' + key.slice(-4)
+}
+
 export async function GET() {
   try {
-    return ok(localStore.apiKeys.items)
+    const masked = localStore.apiKeys.items.map(k => ({ ...k, key: maskKey(k.key) }))
+    return ok(masked)
   } catch (e) { return serverError(e) }
 }
 

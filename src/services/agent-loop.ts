@@ -91,7 +91,8 @@ async function callLlm(
         return null
       }
       return await response.json()
-    } catch {
+    } catch (err) {
+      console.error(`[agent-loop] Provider ${name} failed:`, err instanceof Error ? err.message : String(err))
       continue
     }
   }
@@ -140,7 +141,7 @@ export async function runAgentLoop(config: AgentLoopConfig): Promise<AgentLoopRe
             function: {
               name: mcpToolName,
               description: t.description || `MCP Tool: ${t.name}`,
-              parameters: t.inputSchema || { type: 'object', properties: {} },
+              parameters: (t.inputSchema || { type: 'object', properties: {}, required: [] }) as any,
             }
           })
         }
