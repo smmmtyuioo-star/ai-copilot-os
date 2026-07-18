@@ -27,6 +27,10 @@ export const env = {
     url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
     version: '0.1.0',
   },
+  turnstile: {
+    siteKey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '',
+    secretKey: process.env.TURNSTILE_SECRET_KEY || '',
+  },
   storage: {
     maxFileSize: parseInt(process.env.NEXT_PUBLIC_MAX_FILE_SIZE || '10485760'),
     allowedTypes: (process.env.NEXT_PUBLIC_ALLOWED_FILE_TYPES || 'image/*,application/pdf,.doc,.docx,.txt,.csv').split(','),

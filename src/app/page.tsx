@@ -563,10 +563,6 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     setRecoveredStream(null)
     const perm = checkPermission('send message')
     if (perm === 'deny') return
-    if (perm === 'ask' && getMode() !== 'autopilot') {
-      const ok = window.confirm(`Send message to AI?\n\n"${input.slice(0, 80)}..."`)
-      if (!ok) return
-    }
     let convId = activeConv
     if (!convId) {
       const conv: Conversation = {
@@ -1231,7 +1227,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                   </label>
                   <button onClick={() => { router.push('/plugins'); setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
                     <Puzzle className="h-4 w-4 text-purple-500" /> Plugins
-                    <span className="ml-auto text-xs text-gray-400">{(() => { try { return JSON.parse(localStorage.getItem('ac_plugins') || '[]').length } catch { return 0 } })()} installed</span>
+                    <span className="ml-auto text-xs text-gray-400">{(() => { try { const uid = JSON.parse(localStorage.getItem('ac_user') || '{}')?.id || ''; const key = uid ? `ac_plugins_${uid}` : 'ac_plugins'; return JSON.parse(localStorage.getItem(key) || '[]').length } catch { return 0 } })()} installed</span>
                   </button>
                   <button onClick={() => { router.push('/skills'); setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
                     <Wand2 className="h-4 w-4 text-green-500" /> Skills

@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { streamAiResponse, saveMessage, getMessages, getConversations, createConversation, deleteConversation } from '@/services/chat'
 import { getActiveCredentialId } from '@/lib/credentials'
 import type { Conversation, Message } from '@/types'
-import { formatDate, cn } from '@/lib/utils'
+import { formatDate, cn, generateId } from '@/lib/utils'
 
 const MODELS = [
   { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B', group: 'Groq' },

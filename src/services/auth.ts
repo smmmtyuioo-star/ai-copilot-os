@@ -39,13 +39,21 @@ function clearLocalUser(): void {
   localStorage.removeItem('ac_user')
 }
 
+function getAppUrl(): string {
+  if (typeof window !== 'undefined') return window.location.origin
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://ai-copilot-os.vercel.app'
+}
+
 export async function signUp(email: string, password: string, name: string): Promise<AuthResult> {
   if (hasSupabase) {
     const supabase = getSupabase()
     if (supabase) {
       const { data, error } = await supabase.auth.signUp({
         email, password,
-        options: { data: { name } },
+        options: {
+          data: { name },
+          emailRedirectTo: `${getAppUrl()}/auth/callback`,
+        },
       })
       if (error) return { success: false, error: error.message }
       if (!data.user) return { success: false, error: 'Signup failed' }
@@ -142,7 +150,7 @@ export async function resetPassword(email: string): Promise<AuthResult> {
     const supabase = getSupabase()
     if (supabase) {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
+        redirectTo: `${getAppUrl()}/auth/reset-password`,
       })
       if (error) return { success: false, error: error.message }
       return { success: true }

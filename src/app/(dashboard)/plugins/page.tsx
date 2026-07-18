@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Download, Trash2, CheckCircle2, AlertCircle, Play, Copy, Search } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Modal } from '@/components/ui'
 import { generateId } from '@/lib/utils'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Plugin {
   id: string
@@ -51,20 +52,25 @@ const PLUGIN_ACTIONS: Record<string, { label: string; inputLabel: string; inputP
 }
 
 export default function PluginsPage() {
+  const { user } = useAuth()
   const [plugins, setPlugins] = useState<Plugin[]>([])
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [action, setAction] = useState<PluginAction | null>(null)
   const [filter, setFilter] = useState('all')
   const [pluginSearch, setPluginSearch] = useState('')
 
+  function pluginStorageKey() {
+    return user ? `ac_plugins_${user.id}` : 'ac_plugins'
+  }
+
   useEffect(() => {
-    const installed = JSON.parse(localStorage.getItem('ac_plugins') || '[]')
+    const installed = JSON.parse(localStorage.getItem(pluginStorageKey()) || '[]')
     setPlugins(AVAILABLE_PLUGINS.map(p => ({ ...p, installed: installed.includes(p.id) })))
-  }, [])
+  }, [user])
 
   function saveState(list: Plugin[]) {
     setPlugins(list)
-    localStorage.setItem('ac_plugins', JSON.stringify(list.filter(p => p.installed).map(p => p.id)))
+    localStorage.setItem(pluginStorageKey(), JSON.stringify(list.filter(p => p.installed).map(p => p.id)))
   }
 
   function enable(id: string) {
