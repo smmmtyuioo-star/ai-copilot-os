@@ -1,8 +1,9 @@
 'use client'
-import { useState, useEffect } from 'react'
-import { FileText, Plus, Trash2, Play, Copy, Wand2, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { FileText, Plus, Trash2, Play, Copy, Wand2, Loader2, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Modal, Input } from '@/components/ui'
 import { generateId } from '@/lib/utils'
+import { skillRegistry } from '@/services/skill-registry'
 
 interface Skill {
   id: string
@@ -43,38 +44,53 @@ export default function SkillsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    const custom = JSON.parse(localStorage.getItem('ac_custom_skills') || '[]')
-    setSkills([...BUILT_IN_SKILLS, ...custom])
+    loadSkills()
+    const unsub = skillRegistry.onChange(loadSkills)
+    return unsub
   }, [])
 
-  function saveCustomSkills(custom: Skill[]) {
-    localStorage.setItem('ac_custom_skills', JSON.stringify(custom))
-    setSkills([...BUILT_IN_SKILLS, ...custom])
+  function loadSkills() {
+    const custom = skillRegistry.getAll()
+    setSkills([...BUILT_IN_SKILLS, ...custom.map(s => ({ ...s, builtIn: s.builtIn || BUILT_IN_SKILLS.some(b => b.id === s.id) }))])
   }
 
   function createSkill() {
     if (!newName.trim() || !newPrompt.trim()) return
-    const custom: Skill[] = JSON.parse(localStorage.getItem('ac_custom_skills') || '[]')
-    const skill: Skill = {
-      id: generateId(), name: newName, description: newDesc || `${newName} skill`,
-      icon: '⚡', category: newCategory, builtIn: false,
+    skillRegistry.manualCreate({
+      name: newName, description: newDesc || `${newName} skill`,
+      icon: '⚡', category: newCategory,
       inputLabel: `What do you want to ${newName}?`,
       inputPlaceholder: `Describe what ${newName} should do...`,
-      systemPrompt: newPrompt,
-    }
-    custom.push(skill)
-    saveCustomSkills(custom)
+      systemPrompt: newPrompt, tags: [],
+    })
     setShowCreator(false)
     setNewName(''); setNewDesc(''); setNewPrompt(''); setNewCategory('Custom')
-    setMessage({ type: 'success', text: `Skill "${skill.name}" created!` })
+    setMessage({ type: 'success', text: `Skill "${newName}" created!` })
     setTimeout(() => setMessage(null), 3000)
   }
 
   function deleteSkill(id: string) {
     if (BUILT_IN_SKILLS.find(s => s.id === id)) return
-    const custom = JSON.parse(localStorage.getItem('ac_custom_skills') || '[]').filter((s: Skill) => s.id !== id)
-    saveCustomSkills(custom)
-    if (action?.skill.id === id) setAction(null)
+    if (skillRegistry.delete(id)) {
+      loadSkills()
+      if (action?.skill.id === id) setAction(null)
+      setMessage({ type: 'success', text: 'Skill deleted' })
+      setTimeout(() => setMessage(null), 3000)
+    }
+  }
+
+  async function autoGenerateSkill() {
+    const output = action?.output || ''
+    const input = action?.input || ''
+    if (!input && !output) return
+    const skill = skillRegistry.register({
+      taskDescription: input,
+      taskOutput: output,
+    })
+    skillRegistry.incrementUsage(skill.id)
+    loadSkills()
+    setMessage({ type: 'success', text: `Skill "${skill.name}" auto-generated from task output!` })
+    setTimeout(() => setMessage(null), 3000)
   }
 
   async function executeSkill() {
@@ -192,7 +208,10 @@ export default function SkillsPage() {
               <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-medium text-gray-500">Output</span>
-                  <button onClick={() => navigator.clipboard.writeText(action.output)} className="text-xs text-blue-600 hover:underline"><Copy className="h-3 w-3 inline" /> Copy</button>
+                  <div className="flex gap-2">
+                    <button onClick={autoGenerateSkill} className="text-xs text-purple-600 hover:underline"><Sparkles className="h-3 w-3 inline" /> Save as Skill</button>
+                    <button onClick={() => navigator.clipboard.writeText(action.output)} className="text-xs text-blue-600 hover:underline"><Copy className="h-3 w-3 inline" /> Copy</button>
+                  </div>
                 </div>
                 <pre className="whitespace-pre-wrap text-sm max-h-80 overflow-y-auto">{action.output}</pre>
               </div>

@@ -16,7 +16,8 @@ export async function POST(request: NextRequest) {
     })
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error || 'Agent loop failed' }, { status: 500 })
+      const isClientError = result.error?.toLowerCase().includes('pending') || result.error?.toLowerCase().includes('not found')
+      return NextResponse.json({ error: result.error || 'Agent loop failed' }, { status: isClientError ? 400 : 500 })
     }
 
     if (result.needsConfirmation) {

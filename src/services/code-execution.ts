@@ -1,6 +1,7 @@
 import vm from 'vm'
 import { parseError } from '@/lib/utils'
 import { safeTruncateOutput } from '@/lib/truncate'
+import { sandboxInstance } from '@/services/sandbox'
 
 export interface CodeExecutionConfig {
   code: string
@@ -24,6 +25,11 @@ const DEFAULT_MAX_OUTPUT = 10000
 export async function executeCode(config: CodeExecutionConfig): Promise<CodeExecutionResult> {
   const { code, language, maxOutputLength = DEFAULT_MAX_OUTPUT } = config
   const timeout = Math.min(config.timeout || DEFAULT_TIMEOUT, MAX_TIMEOUT)
+
+  const sandboxCheck = sandboxInstance.inspect(code)
+  if (!sandboxCheck.allowed) {
+    return { success: false, stdout: '', stderr: sandboxCheck.reason || 'Code blocked by sandbox', executionTimeMs: 0, error: sandboxCheck.reason }
+  }
 
   if (!code || code.trim().length === 0) {
     return { success: false, stdout: '', stderr: 'No code provided', executionTimeMs: 0, error: 'No code provided' }

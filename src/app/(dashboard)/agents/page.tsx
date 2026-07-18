@@ -1,9 +1,10 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Plus, Play, Trash2, Bot, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Plus, Play, Trash2, Bot, Loader2, CheckCircle2, AlertCircle, Layers, GitBranch, StopCircle, Brain } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Modal } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import { getAgents, createAgent, deleteAgent, executeAgentPipeline, getAgentDefaults } from '@/services/agents'
+import { orchestrator } from '@/services/orchestrator'
 import type { Agent, AgentRole } from '@/types'
 import { formatDate } from '@/lib/utils'
 
@@ -30,6 +31,8 @@ export default function AgentsPage() {
   const [loading, setLoading] = useState(true)
   const [pipelineStatus, setPipelineStatus] = useState<{ agent: string; status: string }[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [mode, setMode] = useState<'sequential' | 'parallel' | 'orchestrated'>('sequential')
+  const [orchestratorOutput, setOrchestratorOutput] = useState<string | null>(null)
 
   useEffect(() => { if (user) load() }, [user])
 
@@ -64,13 +67,31 @@ export default function AgentsPage() {
     if (!user || !request.trim()) return
     setRunning(true)
     setPipelineStatus([])
-    const result = await executeAgentPipeline(user.id, request, (agentName, status) => {
-      setPipelineStatus(prev => [...prev.filter(s => s.agent !== agentName), { agent: agentName, status }])
-    })
-    setRunning(false)
-    if (!result.success && result.error) {
-      setPipelineStatus(prev => [...prev, { agent: 'Pipeline', status: `Error: ${result.error}` }])
+    setOrchestratorOutput(null)
+
+    if (mode === 'orchestrated') {
+      const pipeline = await orchestrator.createPipeline(user.id, request, {
+        parallelSessions: true,
+        generateSkills: true,
+      })
+      await orchestrator.executePipeline(pipeline.id, (nodeId, status, output) => {
+        setPipelineStatus(prev => [...prev.filter(s => s.agent !== nodeId), { agent: nodeId, status }])
+      })
+      const result = orchestrator.getPipeline(pipeline.id)
+      if (result?.aggregatorOutput) setOrchestratorOutput(result.aggregatorOutput)
+      if (!result || result.status === 'failed') {
+        setPipelineStatus(prev => [...prev, { agent: 'Pipeline', status: 'Error: Some agents failed' }])
+      }
+    } else {
+      const result = await executeAgentPipeline(user.id, request, (agentName, status) => {
+        setPipelineStatus(prev => [...prev.filter(s => s.agent !== agentName), { agent: agentName, status }])
+      })
+      if (!result.success && result.error) {
+        setPipelineStatus(prev => [...prev, { agent: 'Pipeline', status: `Error: ${result.error}` }])
+      }
     }
+
+    setRunning(false)
   }
 
   return (
@@ -146,8 +167,14 @@ export default function AgentsPage() {
                 className="w-full rounded-lg border border-gray-300 p-3 text-sm dark:border-gray-600 dark:bg-gray-700"
                 rows={6}
               />
-              <Button onClick={handleRunPipeline} className="w-full" disabled={!request.trim() || running || agents.length === 0} loading={running}>
-                <Play className="h-4 w-4" /> Run Pipeline
+              <div className="flex gap-2">
+                <Button onClick={() => setMode(mode === 'sequential' ? 'parallel' : mode === 'parallel' ? 'orchestrated' : 'sequential')} size="sm" variant="ghost" className="text-xs">
+                  <GitBranch className="h-3 w-3" /> {mode === 'orchestrated' ? 'Orchestrated' : mode === 'parallel' ? 'Parallel' : 'Sequential'}
+                </Button>
+              </div>
+              <Button onClick={handleRunPipeline} className="w-full" disabled={!request.trim() || running || (mode !== 'orchestrated' && agents.length === 0)} loading={running}>
+                {mode === 'orchestrated' ? <Brain className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                {mode === 'orchestrated' ? 'Run Orchestrated' : 'Run Pipeline'}
               </Button>
               {pipelineStatus.length > 0 && (
                 <div className="space-y-2">
@@ -157,8 +184,10 @@ export default function AgentsPage() {
                         <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
                       ) : s.status === 'completed' ? (
                         <CheckCircle2 className="h-3 w-3 text-green-500" />
-                      ) : s.status.startsWith('Error') ? (
+                      ) : s.status.startsWith('Error') || s.status === 'failed' ? (
                         <AlertCircle className="h-3 w-3 text-red-500" />
+                      ) : s.status === 'skipped' ? (
+                        <StopCircle className="h-3 w-3 text-gray-400" />
                       ) : (
                         <Loader2 className="h-3 w-3 text-gray-400" />
                       )}
@@ -166,10 +195,21 @@ export default function AgentsPage() {
                       <span className={`ml-auto ${
                         s.status === 'running' ? 'text-blue-600' :
                         s.status === 'completed' ? 'text-green-600' :
-                        s.status.startsWith('Error') ? 'text-red-600' : 'text-gray-500'
+                        s.status.startsWith('Error') || s.status === 'failed' ? 'text-red-600' :
+                        s.status === 'skipped' ? 'text-gray-400' : 'text-gray-500'
                       }`}>{s.status}</span>
                     </div>
                   ))}
+                </div>
+              )}
+              {orchestratorOutput && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-900/50">
+                  <div className="mb-1 flex items-center gap-1 text-xs font-medium text-blue-700 dark:text-blue-300">
+                    <Layers className="h-3 w-3" /> Aggregated Result
+                  </div>
+                  <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs text-blue-900 dark:text-blue-100">
+                    {orchestratorOutput}
+                  </pre>
                 </div>
               )}
             </CardContent>

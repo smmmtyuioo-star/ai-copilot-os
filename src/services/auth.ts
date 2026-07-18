@@ -56,14 +56,25 @@ export async function signUp(email: string, password: string, name: string): Pro
       return { success: true, user }
     }
   }
-  // Local fallback
+  // Local fallback — call the server API route for proper password hashing
   if (!email || !password || !name) return { success: false, error: 'Email, password, and name are required' }
-  const user: User = {
-    id: generateId(), email, name,
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  try {
+    const res = await fetch('/api/auth/user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, name, action: 'register' }),
+    })
+    const data = await res.json()
+    if (!data.success) return { success: false, error: data.error || 'Registration failed' }
+    const user: User = {
+      id: data.user.id, email: data.user.email, name: data.user.name,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }
+    setLocalUser(user)
+    return { success: true, user }
+  } catch {
+    return { success: false, error: 'Network error — could not reach server' }
   }
-  setLocalUser(user)
-  return { success: true, user }
 }
 
 export async function signIn(email: string, password: string): Promise<AuthResult> {
@@ -80,18 +91,25 @@ export async function signIn(email: string, password: string): Promise<AuthResul
       return { success: true, user, session: data.session as unknown as Session }
     }
   }
-  // Local fallback
+  // Local fallback — call the server API route which verifies password hash
   if (!email || !password) return { success: false, error: 'Email and password are required' }
-  const existing = getLocalUser()
-  if (existing && existing.email === email) {
-    return { success: true, user: existing }
+  try {
+    const res = await fetch('/api/auth/user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, action: 'login' }),
+    })
+    const data = await res.json()
+    if (!data.success) return { success: false, error: data.error || 'Invalid email or password' }
+    const user: User = {
+      id: data.user.id, email: data.user.email, name: data.user.name,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }
+    setLocalUser(user)
+    return { success: true, user }
+  } catch {
+    return { success: false, error: 'Network error — could not reach server' }
   }
-  const user: User = {
-    id: generateId(), email, name: email.split('@')[0],
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-  }
-  setLocalUser(user)
-  return { success: true, user }
 }
 
 export async function signOut(): Promise<void> {

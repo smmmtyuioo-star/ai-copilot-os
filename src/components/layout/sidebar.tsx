@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
+import { Logo } from '@/components/ui/logo'
 import {
   LayoutDashboard, MessageSquare, Bot, Globe,
   Brain, Plug, Puzzle, Network, Key, Settings, LogOut,
@@ -20,6 +21,7 @@ const navItems = [
   { href: '/documents', label: 'Documents', icon: FileText },
   { href: '/browser', label: 'Browser', icon: Globe },
   { href: '/memory', label: 'Memory', icon: Brain },
+  { href: '/prompts', label: 'Prompt Inspector', icon: Activity },
   { href: '/connectors', label: 'Connectors', icon: Plug },
   { href: '/mcp', label: 'MCP', icon: Network },
   { href: '/api-center', label: 'API Center', icon: Key },
@@ -34,7 +36,7 @@ export function Sidebar() {
     <aside className="flex h-screen w-64 flex-col border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
       <div className="flex h-14 items-center border-b border-gray-200 px-4 dark:border-gray-700">
           <Link href="/" className="flex items-center gap-2 font-bold text-gray-900 dark:text-gray-100">
-            <Brain className="h-6 w-6 text-blue-600" />
+            <Logo className="h-6 w-6" />
             <span>AI Copilot OS</span>
           </Link>
       </div>

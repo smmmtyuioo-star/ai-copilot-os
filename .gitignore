@@ -39,6 +39,16 @@ yarn-error.log*
 # misc archives
 *.zip
 
+# server-side data store
+/.data/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.aider*
+
+# dev logs
+.dev-*.log
+
+# benchmarks
+benchmark-results.json

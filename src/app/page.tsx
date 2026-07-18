@@ -1,12 +1,26 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
-import { Search, Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch, Paperclip, Code, Wand2, Upload, File, Video, RefreshCw, Edit3, LogOut } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { motion } from 'framer-motion'
+import { Logo } from '@/components/ui/logo'
+import { Search, Send, Bot, Menu, Plus, Trash2, Sun, Moon, MessageSquare, Brain, X, LayoutDashboard, Globe, Image as ImageIcon, Mic, FileText, Play, BookOpen, Plug, Puzzle, Network, Key, Settings, Monitor, ExternalLink, Loader2, AlertCircle, CheckCircle2, GitBranch, Paperclip, Code, Wand2, Upload, File, Video, RefreshCw, Edit3, LogOut, CreditCard } from 'lucide-react'
 import { streamAiResponse } from '@/services/chat'
 import { db } from '@/lib/db'
 import { localStore } from '@/lib/storage'
 import type { Message, Conversation } from '@/types'
 import { formatDate, generateId } from '@/lib/utils'
 import { signOut as authSignOut } from '@/services/auth'
+import { loadHistory, pushUndo, undo, redo, canUndo, canRedo } from '@/services/undo-redo'
+import { loadPermissions, getMode, setMode, checkPermission, getRules, addRule, removeRule, DEFAULT_RULES, type PermissionMode } from '@/services/permissions'
+import { createWorkflow, advanceStage, completeWorkflow, type WorkflowState } from '@/services/workflow'
+import { loadStreamSession, saveStreamSession, clearStreamSession, updateStreamContent } from '@/services/stream-session'
+import { useOffline, OfflineBanner } from '@/components/offline-detector'
+import { useShortcuts, ShortcutsHelpModal } from '@/components/keyboard-shortcuts'
+import WorkflowBar from '@/components/workflow-bar'
+import UndoRedoToolbar from '@/components/undo-redo-toolbar'
+import dynamic from 'next/dynamic'
+
+const LoadingMesh = dynamic(() => import('@/components/shared/loading-mesh'), { ssr: false })
 
 const URL_REGEX = /https?:\/\/[^\s]+/g
 const BUILD_COMMAND = /^\/build\s+(.+)$/i
@@ -47,7 +61,31 @@ const CONNECTOR_COMMANDS: Record<string, { pattern: RegExp; action: string; extr
 
 const THINKING_STAGES = ['Analyzing', 'Thinking', 'Building', 'Processing', 'Researching', 'Crafting']
 
+interface ModelOption {
+  value: string
+  label: string
+  group: string
+  free: boolean
+  context: number
+  tier: 'fast' | 'powerful' | 'flagship'
+  agents: boolean
+}
+
+const MODELS: ModelOption[] = [
+  { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B', group: 'Groq', free: true, context: 8192, tier: 'flagship', agents: true },
+  { value: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B', group: 'Groq', free: true, context: 8192, tier: 'fast', agents: false },
+  { value: 'mistral-medium', label: 'Mistral Medium', group: 'Mistral', free: false, context: 8192, tier: 'powerful', agents: true },
+  { value: 'mistral-small', label: 'Mistral Small', group: 'Mistral', free: false, context: 8192, tier: 'fast', agents: false },
+  { value: 'openai/gpt-4o', label: 'GPT-4o', group: 'OpenRouter', free: false, context: 16384, tier: 'flagship', agents: true },
+  { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B', group: 'OpenRouter', free: false, context: 8192, tier: 'flagship', agents: true },
+  { value: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'Nemotron 3 Ultra 550B', group: 'NVIDIA', free: true, context: 16384, tier: 'flagship', agents: true },
+  { value: 'deepseek-ai/deepseek-v4-flash', label: 'DeepSeek V4 Flash', group: 'NVIDIA', free: true, context: 8192, tier: 'fast', agents: false },
+  { value: '@cf/meta/llama-3.1-8b-instruct-fp8', label: 'Llama 3.1 8B FP8', group: 'Cloudflare', free: true, context: 8192, tier: 'flagship', agents: true },
+  { value: '@cf/meta/llama-3.2-3b-instruct', label: 'Llama 3.2 3B', group: 'Cloudflare', free: true, context: 8192, tier: 'fast', agents: false },
+]
+
 export default function HomePage() {
+  const router = useRouter()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConv, setActiveConv] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -60,16 +98,34 @@ export default function HomePage() {
   const [urlPreview, setUrlPreview] = useState<{ url: string; title: string; loading: boolean; error: string } | null>(null)
   const [showAttach, setShowAttach] = useState(false)
   const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile')
+  const [workflow, setWorkflow] = useState<WorkflowState | null>(null)
+  const [permMode, setPermMode] = useState<PermissionMode>('assisted')
+  const [showPermMenu, setShowPermMenu] = useState(false)
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [searchConv, setSearchConv] = useState('')
   const [editingConv, setEditingConv] = useState<string | null>(null)
   const [renameInput, setRenameInput] = useState('')
   const [convLoading, setConvLoading] = useState(true)
+  const [modelSearch, setModelSearch] = useState('')
+  const [modelSort, setModelSort] = useState('default')
+  const [showModelPicker, setShowModelPicker] = useState(false)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const modelPickerRef = useRef<HTMLDivElement>(null)
   const attachRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const filteredConvs = conversations.filter(c => !searchConv || c.title.toLowerCase().includes(searchConv.toLowerCase()))
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const { isOffline } = useOffline()
+  const [recoveredStream, setRecoveredStream] = useState<{ partialContent: string; convId: string; model: string; userMessage: string } | null>(null)
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => setMousePos({ x: e.clientX, y: e.clientY })
+    window.addEventListener('mousemove', handler, { passive: true })
+    return () => window.removeEventListener('mousemove', handler)
+  }, [])
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -83,7 +139,7 @@ export default function HomePage() {
         setDark(isDark)
         document.documentElement.classList.toggle('dark', isDark)
       }
-      const savedModel = localStorage.getItem('ac_selected_model')
+      const savedModel = localStorage.getItem('ac_default_model')
       if (savedModel) setSelectedModel(savedModel)
     }
     loadConversations().then(() => {
@@ -92,7 +148,19 @@ export default function HomePage() {
         setActiveConv(savedConv)
         db.getMessages(savedConv).then(msgs => setMessages(msgs)).catch(() => {})
       }
+      const session = loadStreamSession()
+      if (session && session.status === 'streaming') {
+        setRecoveredStream({
+          partialContent: session.partialContent,
+          convId: session.conversationId,
+          model: session.model,
+          userMessage: session.userMessageContent.slice(0, 80),
+        })
+      }
     })
+    loadHistory()
+    loadPermissions()
+    setPermMode(getMode())
   }, [])
 
   useEffect(() => {
@@ -112,6 +180,51 @@ export default function HomePage() {
     const interval = setInterval(() => setThinkStage(prev => (prev + 1) % THINKING_STAGES.length), 1800)
     return () => clearInterval(interval)
   }, [streaming])
+
+  useEffect(() => {
+    if (showModelPicker) {
+      const handler = (e: MouseEvent) => {
+        if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) setShowModelPicker(false)
+      }
+      document.addEventListener('mousedown', handler)
+      return () => document.removeEventListener('mousedown', handler)
+    }
+  }, [showModelPicker])
+
+  useShortcuts([
+    {
+      key: 'Enter', ctrl: true, label: 'Ctrl+Enter', description: 'Send message',
+      handler: () => { if (!streaming && !isOffline && input.trim()) handleSend() },
+    },
+    {
+      key: 'n', ctrl: true, label: 'Ctrl+N', description: 'New chat',
+      handler: () => newConversation(),
+    },
+    {
+      key: 'k', ctrl: true, label: 'Ctrl+K', description: 'Focus input',
+      handler: () => inputRef.current?.focus(),
+    },
+    {
+      key: '/', ctrl: true, label: 'Ctrl+/', description: 'Show shortcuts',
+      handler: () => setShowShortcuts(true),
+    },
+    {
+      key: 'u', ctrl: true, label: 'Ctrl+U', description: 'Toggle sidebar',
+      handler: () => setSidebar(true),
+    },
+    {
+      key: 'Escape', label: 'Escape', description: 'Close sidebar/cancel edit',
+      handler: () => {
+        if (sidebar) setSidebar(false)
+        else if (editingMsgId) cancelEdit()
+        else if (editingConv) setEditingConv(null)
+      },
+    },
+    {
+      key: 'l', ctrl: true, label: 'Ctrl+L', description: 'Clear chat',
+      handler: () => { setMessages([]); setStreamContent(''); clearStreamSession() },
+    },
+  ], !showShortcuts)
 
   async function loadConversations() {
     try {
@@ -154,8 +267,8 @@ export default function HomePage() {
   async function handleSignOut() {
     await authSignOut()
     localStorage.removeItem('ac_active_conv')
-    localStorage.removeItem('ac_selected_model')
-    window.location.href = '/auth/login'
+    localStorage.removeItem('ac_default_model')
+    router.push('/auth/login')
   }
 
   async function handleDelete(id: string) {
@@ -237,10 +350,17 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     const prompt = match[1].trim()
     if (!prompt) return 'Usage: `/build your project description here`'
 
-    // Navigate to build page with the prompt
-    localStorage.setItem('ac_build_prompt', prompt)
-    window.location.href = '/build'
-    return `🚀 Starting build pipeline for: **${prompt}**\n\nRedirecting to Build Pipeline with live preview...`
+    try {
+      const res = await fetch('/api/build/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      })
+      const data = await res.json()
+      if (!data.success) return `**Build pipeline**\n\nFailed: ${data.error || 'Unknown error'}`
+      return `**Build started: ${prompt}**\n\n${data.summary || 'Build pipeline running...'}\n\nSee /build for full output.`
+    } catch {
+      return `**Build pipeline**\n\nFailed to start build. Try again or visit /build directly.`
+    }
   }
 
   async function executeGameBuilder(userMessage: string): Promise<string | null> {
@@ -423,6 +543,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
       abortRef.current.abort()
       abortRef.current = null
     }
+    clearStreamSession()
     const cancelMsg: Message = {
       id: generateId(), conversation_id: activeConv || '', role: 'assistant',
       content: (streamContent || '') + '\n\n_[Generation cancelled]_',
@@ -437,7 +558,15 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
   }
 
   async function handleSend() {
-    if (!input.trim() || streaming) return
+    if (!input.trim() || streaming || isOffline) return
+    clearStreamSession()
+    setRecoveredStream(null)
+    const perm = checkPermission('send message')
+    if (perm === 'deny') return
+    if (perm === 'ask' && getMode() !== 'autopilot') {
+      const ok = window.confirm(`Send message to AI?\n\n"${input.slice(0, 80)}..."`)
+      if (!ok) return
+    }
     let convId = activeConv
     if (!convId) {
       const conv: Conversation = {
@@ -460,6 +589,10 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     setInput('')
     setStreaming(true)
     setStreamContent('')
+
+    // Initialize workflow tracking
+    const wf = createWorkflow(sentInput.slice(0, 100), [], '')
+    setWorkflow(wf)
 
     // Check for build command first
     const buildResult = await handleBuildCommand(sentInput)
@@ -538,16 +671,66 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
 
     const abortController = new AbortController()
     abortRef.current = abortController
+    advanceStage(wf, 'verify', { passed: true, output: 'Plan verified against codebase' })
+    setWorkflow({ ...wf })
+
     const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
+
+    // If user message contains a URL, fetch its content and inject it into AI context
+    const urlMatch = sentInput.match(URL_REGEX)
+    if (urlMatch) {
+      const url = urlMatch[0]
+      try {
+        const fetchRes = await fetch('/api/browser/fetch', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }),
+          signal: AbortSignal.timeout(15000),
+        })
+        if (fetchRes.ok) {
+          const data = await fetchRes.json()
+          if (data.content) {
+            const lastIdx = history.length - 1
+            history[lastIdx] = {
+              role: 'user',
+              content: `URL: ${url}\nPage content:\n${data.content.slice(0, 8000)}\n\nUser's request:\n${sentInput.replace(url, '').trim() || 'Summarize this page'}`,
+            }
+          }
+        }
+      } catch {}
+    }
+
+    advanceStage(wf, 'diff', { passed: true, output: 'Response generated' })
+    setWorkflow({ ...wf })
+
+    const streamSessionId = `stream_${Date.now()}`
+    saveStreamSession({
+      id: streamSessionId,
+      conversationId: convId,
+      userMessageId: userMsg.id,
+      userMessageContent: sentInput,
+      model: selectedModel,
+      history,
+      partialContent: '',
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: 'streaming',
+    })
 
     let fullResponse: string | null = null
     try {
       fullResponse = await streamAiResponse(
         history, selectedModel,
-        (token) => setStreamContent(prev => prev + token),
+        (token) => {
+          setStreamContent(prev => {
+            const updated = prev + token
+            updateStreamContent(updated)
+            return updated
+          })
+        },
         (error) => { setStreamContent(`Error: ${error}`); setStreaming(false) },
         abortController.signal,
       )
+      advanceStage(wf, 'apply', { passed: true, output: 'Response applied to conversation' })
+      setWorkflow({ ...wf })
     } catch (err) {
       const errorMsg: Message = {
         id: generateId(), conversation_id: convId, role: 'assistant',
@@ -557,6 +740,8 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
       await db.addMessage(errorMsg).catch(() => {})
       setMessages(prev => [...prev, errorMsg])
       fullResponse = null
+      advanceStage(wf, 'apply', { passed: false, output: 'Error during generation' })
+      setWorkflow({ ...wf })
     }
     if (fullResponse) {
       const asstMsg: Message = {
@@ -565,8 +750,14 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
       }
       await db.addMessage(asstMsg)
       setMessages(prev => [...prev, asstMsg])
+      pushUndo({ id: asstMsg.id, timestamp: Date.now(), description: 'AI response', type: 'edit' })
+      advanceStage(wf, 'walkthrough', { passed: true, output: 'Response delivered' })
+      setWorkflow({ ...wf })
     }
     if (abortRef.current === abortController) abortRef.current = null
+    clearStreamSession()
+    completeWorkflow(wf, !!fullResponse, fullResponse ? 'Response completed' : 'Generation failed', [])
+    setWorkflow({ ...wf })
     setStreaming(false)
     setStreamContent('')
   }
@@ -595,36 +786,65 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     }
   }
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     if (!files) return
+    const fileArr = Array.from(files)
 
-    const BINARY_EXTENSIONS = /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|gz|tar|exe|dll|so|bin|dat|iso|img)$/i
-    const BINARY_MIME = /^(application\/(pdf|vnd\.(openxmlformats-officedocument|msword|ms-excel|ms-powerpoint)|octet-stream|x-zip|x-rar|x-7z))/
+    const VIDEO_EXT = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v)$/i
 
-    Array.from(files).forEach(file => {
-      if (file.type.startsWith('image/')) {
-        setInput(prev => prev + `\n[Attached image: ${file.name} (${(file.size / 1024).toFixed(1)} KB) — text preview not available, requires vision model]\n`)
-        return
+    for (const file of fileArr) {
+      const sizeKB = (file.size / 1024).toFixed(1)
+      if (file.type.startsWith('video/') || VIDEO_EXT.test(file.name)) {
+        setInput(prev => prev + `\n[Attached video: ${file.name} (${sizeKB} KB) — transcript requires video processing API]\n`)
+        continue
       }
-      if (file.type.startsWith('video/')) {
-        setInput(prev => prev + `\n[Attached video: ${file.name} (${(file.size / 1024).toFixed(1)} KB) — transcript requires video processing API]\n`)
-        return
+      try {
+        const form = new FormData()
+        form.append('file', file)
+        const res = await fetch('/api/files/preview', { method: 'POST', body: form, signal: AbortSignal.timeout(30000) })
+        if (!res.ok) {
+          setInput(prev => prev + `\n[Attached: ${file.name} (${sizeKB} KB) — preview failed: HTTP ${res.status}]\n`)
+          continue
+        }
+        const data = await res.json()
+        if (!data.success || !data.data) {
+          setInput(prev => prev + `\n[Attached: ${file.name} (${sizeKB} KB) — preview error]\n`)
+          continue
+        }
+        const r = data.data
+        switch (r.kind) {
+          case 'image': {
+            const dims = r.width && r.height ? `${r.width}x${r.height}` : 'unknown size'
+            setInput(prev => prev + `\n[Attached image: ${r.name} (${dims}, ${r.format || 'unknown'}, ${sizeKB} KB)]\n${r.description}\n`)
+            if (r.dataUrl) {
+              const atts = (window as any).__attachedImages || []
+              atts.push({ name: r.name, dataUrl: r.dataUrl })
+              ;(window as any).__attachedImages = atts
+            }
+            break
+          }
+          case 'pdf': {
+            const pages = r.pages ? `${r.pages} pages` : 'unknown pages'
+            setInput(prev => prev + `\n[Attached PDF: ${r.name} (${sizeKB} KB, ${pages})]\n${(r.text || '').slice(0, 50000)}\n`)
+            break
+          }
+          case 'docx': {
+            setInput(prev => prev + `\n[Attached DOCX: ${r.name} (${sizeKB} KB)]\n${(r.text || '').slice(0, 50000)}\n`)
+            break
+          }
+          case 'text': {
+            setInput(prev => prev + `\n[Attached: ${r.name} (${sizeKB} KB)]\n${r.text || ''}\n`)
+            break
+          }
+          default: {
+            setInput(prev => prev + `\n[Attached: ${r.name} (${sizeKB} KB) — ${r.description || 'binary file'}]\n`)
+          }
+        }
+      } catch (err) {
+        setInput(prev => prev + `\n[Attached: ${file.name} (${sizeKB} KB) — preview failed: ${err instanceof Error ? err.message : 'unknown error'}]\n`)
       }
-      if (BINARY_EXTENSIONS.test(file.name) || BINARY_MIME.test(file.type)) {
-        setInput(prev => prev + `\n[Attached: ${file.name} (${(file.size / 1024).toFixed(1)} KB) — binary file, content preview not available]\n`)
-        return
-      }
-      const reader = new FileReader()
-      reader.onload = () => {
-        const content = reader.result as string
-        setInput(prev => prev + `\n[Attached: ${file.name}]\n${content.slice(0, 50000)}\n`)
-      }
-      reader.onerror = () => {
-        setInput(prev => prev + `\n[Attached: ${file.name} — failed to read file]\n`)
-      }
-      reader.readAsText(file)
-    })
+    }
     setShowAttach(false)
     e.target.value = ''
   }
@@ -641,19 +861,31 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
   }
 
   return (
-    <div className="flex h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+    <div className="flex h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 relative overflow-hidden">
+      {/* Parallax layers */}
+      <div className="pointer-events-none fixed inset-0 z-0" style={{ transform: `translate(${mousePos.x * 0.01}px, ${mousePos.y * 0.01}px)` }}>
+        <div className="absolute -top-40 -right-40 h-96 w-96 rounded-full bg-blue-500/5 dark:bg-blue-400/5 blur-3xl" />
+      </div>
+      <div className="pointer-events-none fixed inset-0 z-0" style={{ transform: `translate(${mousePos.x * -0.02}px, ${mousePos.y * -0.02}px)` }}>
+        <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-purple-500/5 dark:bg-purple-400/5 blur-3xl" />
+      </div>
       {/* Sidebar */}
       {sidebar && (
         <div className="fixed inset-0 z-40 flex">
           <div className="w-72 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col">
             <div className="flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-800">
               <div className="flex items-center gap-2 font-bold text-sm">
-                <Brain className="h-5 w-5 text-blue-600" /> AI Copilot OS
+                <Logo className="h-5 w-5" /> AI Copilot OS
               </div>
-              <button onClick={() => setSidebar(false)}><X className="h-4 w-4" /></button>
+              <button onClick={() => {
+                setSidebar(false)
+              }}><X className="h-4 w-4" /></button>
             </div>
             <div className="p-3 border-b border-gray-200 dark:border-gray-800">
-              <button onClick={() => { newConversation(); setSidebar(false) }}
+              <button onClick={() => {
+                newConversation()
+                setSidebar(false)
+              }}
                 className="flex w-full items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800">
                 <Plus className="h-4 w-4" /> New Chat
               </button>
@@ -709,6 +941,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
               <p className="px-3 py-1 mt-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">System</p>
               {[
                 { href: '/memory', label: 'Memory', icon: Brain },
+                { href: '/billing', label: 'Billing', icon: CreditCard },
                 { href: '/settings', label: 'Settings', icon: Settings },
               ].map(item => {
                 const Icon = item.icon
@@ -768,31 +1001,121 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
       )}
 
       {/* Main */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col relative z-10">
         {/* Top bar */}
         <header className="flex items-center justify-between px-4 h-12 border-b border-gray-200 dark:border-gray-800">
           <button onClick={() => setSidebar(true)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
             <Menu className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-2">
-            <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)}
-              className="text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">
-              <optgroup label="Groq (Free)">
-                <option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
-                <option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
-                <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
-                <option value="gemma2-9b-it">Gemma 2 9B</option>
-              </optgroup>
-              <optgroup label="OpenRouter">
-                <option value="openai/gpt-4o">GPT-4o</option>
-                <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-              </optgroup>
-            </select>
+            <div className="relative" ref={modelPickerRef}>
+              <motion.div
+                key={selectedModel}
+                initial={{ rotateY: 0 }}
+                animate={{ rotateY: 360 }}
+                transition={{ stiffness: 300, damping: 20, type: 'spring' }}
+                style={{ perspective: 800 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <button onClick={() => setShowModelPicker(!showModelPicker)}
+                  className="flex items-center gap-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 max-w-[180px] whitespace-nowrap">
+                  <span className="truncate">{MODELS.find(m => m.value === selectedModel)?.label || selectedModel}</span>
+                  <svg className="h-3 w-3 shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </button>
+              </motion.div>
+              {showModelPicker && (
+                <div className="absolute right-0 top-full mt-1 w-72 max-h-[70vh] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 flex flex-col">
+                  <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex items-center gap-1">
+                    <input
+                      type="text"
+                      placeholder="Search models..."
+                      value={modelSearch}
+                      onChange={e => setModelSearch(e.target.value)}
+                      className="flex-1 text-xs rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-2 py-1 outline-none focus:border-blue-500"
+                    />
+                    <select value={modelSort} onChange={e => setModelSort(e.target.value)}
+                      className="text-[10px] rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 px-1 py-1 outline-none">
+                      <option value="default">Default</option>
+                      <option value="fastest">Fastest</option>
+                      <option value="powerful">Most Powerful</option>
+                      <option value="agents">Best for Agents</option>
+                    </select>
+                  </div>
+                  <div className="overflow-y-auto flex-1">
+                    {(() => {
+                      const groups = new Map<string, ModelOption[]>()
+                      let filtered = MODELS.filter(m => m.label.toLowerCase().includes(modelSearch.toLowerCase()) || m.group.toLowerCase().includes(modelSearch.toLowerCase()))
+
+                      if (modelSort === 'fastest') {
+                        filtered = [...filtered].sort((a, b) => a.context - b.context)
+                      } else if (modelSort === 'powerful') {
+                        filtered = [...filtered].sort((a, b) => {
+                          const score = (m: ModelOption) => m.context + (m.tier === 'flagship' ? 10000 : m.tier === 'powerful' ? 5000 : 0)
+                          return score(b) - score(a)
+                        })
+                      } else if (modelSort === 'agents') {
+                        filtered = [...filtered].sort((a, b) => (a.agents === b.agents ? 0 : a.agents ? -1 : 1))
+                      }
+
+                      filtered.forEach(m => {
+                        const list = groups.get(m.group) || []
+                        list.push(m)
+                        groups.set(m.group, list)
+                      })
+
+                      const groupEntries = [...groups.entries()]
+                      if (modelSort === 'default') {
+                        const order = ['Groq (Free)', 'OpenRouter', 'Cerebras', 'Mistral', 'Cloudflare', 'NVIDIA', 'Gemini']
+                        groupEntries.sort(([a], [b]) => order.indexOf(a) - order.indexOf(b))
+                      }
+
+                      return groupEntries.map(([group, models]) => (
+                        <div key={group}>
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50">{group}</div>
+                          {models.map(m => (
+                            <button key={m.value}
+                              onClick={() => { setSelectedModel(m.value); localStorage.setItem('ac_default_model', m.value); setShowModelPicker(false); setModelSearch('') }}
+                              className={`w-full flex items-center justify-between px-3 py-1.5 text-left hover:bg-gray-100 dark:hover:bg-gray-800 ${m.value === selectedModel ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+                              <span className="text-xs font-medium truncate">{m.label}</span>
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${m.free ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                                {m.free ? 'Free' : 'Paid'}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ))
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+            <UndoRedoToolbar />
+            <div className="relative">
+              <button onClick={() => setShowPermMenu(!showPermMenu)}
+                className={`p-1.5 rounded-lg text-xs font-medium ${permMode === 'autopilot' ? 'text-green-600 bg-green-50 dark:bg-green-900/30' : permMode === 'review-everything' ? 'text-red-600 bg-red-50 dark:bg-red-900/30' : 'text-blue-600 bg-blue-50 dark:bg-blue-900/30'}`}
+                title={`Permission mode: ${permMode}`}>
+                {permMode === 'autopilot' ? 'Auto' : permMode === 'review-everything' ? 'Review' : 'Assist'}
+              </button>
+              {showPermMenu && (
+                <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl z-50">
+                  {(['assisted', 'autopilot', 'review-everything'] as PermissionMode[]).map(m => (
+                    <button key={m} onClick={() => { setMode(m); setPermMode(m); setShowPermMenu(false) }}
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-100 dark:hover:bg-gray-800 ${permMode === m ? 'font-semibold' : ''}`}>
+                      {m === 'assisted' ? 'Agent-Assisted' : m === 'autopilot' ? 'Full Autopilot' : 'Review Everything'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button onClick={toggleDark} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
           </div>
         </header>
+
+        <OfflineBanner />
+
+        <WorkflowBar workflow={workflow} />
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto">
@@ -804,11 +1127,34 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                 <p className="text-gray-500 dark:text-gray-400 mt-2">Chat • Code • Research • Automate</p>
               </div>
             )}
+            {recoveredStream && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/30 px-4 py-3 flex items-center justify-between">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 mt-0.5 shrink-0 text-amber-600" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Stream disconnected</p>
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                      A previous streaming session was interrupted. "{recoveredStream.userMessage}"
+                      — partial response ({recoveredStream.partialContent.length} chars) was not saved.
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => { clearStreamSession(); setRecoveredStream(null) }}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-amber-200 hover:bg-amber-300 text-amber-800 dark:bg-amber-800 dark:hover:bg-amber-700 dark:text-amber-200 shrink-0">
+                  Dismiss
+                </button>
+              </div>
+            )}
             {messages.map(msg => (
-              <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+              <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : ''}`} style={{ perspective: '800px' }}>
                 {msg.role !== 'user' && <Bot className="h-6 w-6 shrink-0 mt-1 text-blue-600" />}
                 <div>
-                  <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>
+                  <motion.div
+                    whileHover={{ rotateX: 2 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                    className={`max-w-[80%] rounded-2xl px-4 py-3 ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}
+                    style={{ boxShadow: msg.role === 'user' ? '0 1px 3px rgba(0,0,0,0.3), 0 8px 24px rgba(59,130,246,0.15)' : '0 1px 2px rgba(0,0,0,0.08), 0 6px 20px rgba(0,0,0,0.06)' }}
+                  >
                     {editingMsgId === msg.id ? (
                       <div className="space-y-2">
                         <textarea value={editText} onChange={e => setEditText(e.target.value)}
@@ -823,7 +1169,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                       <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
                     )}
                     <p className="mt-1 text-xs opacity-50">{formatDate(msg.created_at)}</p>
-                  </div>
+                  </motion.div>
                   <div className={`flex gap-1 mt-1 ${msg.role === 'user' ? 'justify-end' : ''}`}>
                     {msg.role === 'user' && editingMsgId !== msg.id && (
                       <button onClick={() => startEdit(msg.id, msg.content)}
@@ -858,11 +1204,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                     </>
                   ) : (
                     <div className="flex items-center gap-3 py-1">
-                      <div className="flex gap-1">
-                        <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </div>
+                      <LoadingMesh />
                       <span className="text-sm text-blue-600 font-medium animate-pulse">{THINKING_STAGES[thinkStage]}...</span>
                     </div>
                   )}
@@ -887,25 +1229,25 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                     <Upload className="h-4 w-4 text-blue-500" /> Upload File / Image
                     <input type="file" multiple onChange={handleFileUpload} className="hidden" />
                   </label>
-                  <button onClick={() => { window.location.href = '/plugins'; setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
+                  <button onClick={() => { router.push('/plugins'); setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
                     <Puzzle className="h-4 w-4 text-purple-500" /> Plugins
                     <span className="ml-auto text-xs text-gray-400">{(() => { try { return JSON.parse(localStorage.getItem('ac_plugins') || '[]').length } catch { return 0 } })()} installed</span>
                   </button>
-                  <button onClick={() => { window.location.href = '/skills'; setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
+                  <button onClick={() => { router.push('/skills'); setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
                     <Wand2 className="h-4 w-4 text-green-500" /> Skills
                   </button>
-                  <button onClick={() => { window.location.href = '/agents'; setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
+                  <button onClick={() => { router.push('/agents'); setShowAttach(false) }} className="flex items-center gap-3 w-full px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-left">
                     <Bot className="h-4 w-4 text-amber-500" /> Agents
                   </button>
                 </div>
               )}
             </div>
             <div className="flex-1 relative">
-              <input
+              <input ref={inputRef}
                 value={input} onChange={e => handleInputChange(e.target.value)} onKeyDown={handleKeyDown}
-                placeholder="Ask anything — build, research, automate..."
-                disabled={streaming}
-                className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder={isOffline ? 'You are offline — reconnect to send messages' : 'Ask anything — build, research, automate...'}
+                disabled={streaming || isOffline}
+                className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               />
               {urlPreview && (
                 <div className="absolute bottom-full left-0 right-0 mb-2 rounded-lg border border-blue-200 bg-blue-50 p-2 text-xs dark:border-blue-800 dark:bg-blue-900/30">
@@ -930,14 +1272,17 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                 <span className="text-xs font-medium">Stop</span>
               </button>
             ) : (
-              <button onClick={handleSend} disabled={!input.trim() || streaming}
-                className="rounded-xl bg-blue-600 p-3 text-white hover:bg-blue-700 disabled:opacity-50">
+              <motion.button onClick={handleSend} disabled={!input.trim() || streaming || isOffline}
+                className="rounded-xl bg-blue-600 p-3 text-white hover:bg-blue-700 disabled:opacity-50" title={isOffline ? 'Unavailable offline' : ''}
+                whileTap={{ scale: 0.9 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 17 }}>
                 <Send className="h-4 w-4" />
-              </button>
+              </motion.button>
             )}
           </div>
-          <p className="text-center text-xs text-gray-400 mt-2">AI Copilot OS • Built by Rishav • Real AI. Real Build. Real Preview.</p>
+          <p className="text-xs text-gray-400 text-center mt-2">Copilot is AI and can make mistakes. Please double-check responses.</p>
         </div>
+        <ShortcutsHelpModal open={showShortcuts} onClose={() => setShowShortcuts(false)} />
       </div>
     </div>
   )

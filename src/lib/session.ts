@@ -2,7 +2,9 @@ class SessionManager {
   private static instance: SessionManager;
   private storageKey: string = 'copilot_session';
 
-  private constructor()  public static getInstance(): SessionManager {
+  private constructor() {}
+
+  public static getInstance(): SessionManager {
     if (!SessionManager.instance) {
       SessionManager.instance = new SessionManager();
     }
@@ -20,10 +22,10 @@ class SessionManager {
   public loadSession(): any {
     try {
       const sessionData = localStorage.getItem(this.storageKey);
-      return sessionData ? JSON.parse(sessionData) :;
+      return sessionData ? JSON.parse(sessionData) : null;
     } catch (error) {
       console.error('Failed to load session:', error);
-      return;
+      return null;
     }
   }
 }

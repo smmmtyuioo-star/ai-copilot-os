@@ -1,13 +1,26 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Send, Bot, User, Plus, Trash2, Upload, Puzzle, Wand2, Paperclip, ExternalLink } from 'lucide-react'
+import { Send, Bot, User, Plus, Trash2, Upload, Puzzle, Wand2, Paperclip, ExternalLink, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import { streamAiResponse, saveMessage, getMessages, getConversations, createConversation, deleteConversation } from '@/services/chat'
 import { getActiveCredentialId } from '@/lib/credentials'
 import type { Conversation, Message } from '@/types'
 import { formatDate, cn } from '@/lib/utils'
+
+const MODELS = [
+  { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B', group: 'Groq' },
+  { value: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B', group: 'Groq' },
+  { value: 'mistral-medium', label: 'Mistral Medium', group: 'Mistral' },
+  { value: 'mistral-small', label: 'Mistral Small', group: 'Mistral' },
+  { value: 'openai/gpt-4o', label: 'GPT-4o', group: 'OpenRouter' },
+  { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B', group: 'OpenRouter' },
+  { value: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'Nemotron 3 Ultra 550B', group: 'NVIDIA' },
+  { value: 'deepseek-ai/deepseek-v4-flash', label: 'DeepSeek V4 Flash', group: 'NVIDIA' },
+  { value: '@cf/meta/llama-3.1-8b-instruct-fp8', label: 'Llama 3.1 8B FP8', group: 'Cloudflare' },
+  { value: '@cf/meta/llama-3.2-3b-instruct', label: 'Llama 3.2 3B', group: 'Cloudflare' },
+]
 
 const THINKING_STAGES = ['Analyzing', 'Thinking', 'Building', 'Processing', 'Researching', 'Crafting']
 
@@ -22,6 +35,12 @@ export default function ChatPage() {
   const [thinkStage, setThinkStage] = useState(0)
   const [streamContent, setStreamContent] = useState('')
   const [showAttach, setShowAttach] = useState(false)
+  const [selectedModel, setSelectedModel] = useState(() => {
+    if (typeof window === 'undefined') return 'llama-3.3-70b-versatile'
+    return localStorage.getItem('ac_default_model') || 'llama-3.3-70b-versatile'
+  })
+  const [showModelPicker, setShowModelPicker] = useState(false)
+  const modelPickerRef = useRef<HTMLDivElement>(null)
   const attachRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -38,6 +57,16 @@ export default function ChatPage() {
       return () => document.removeEventListener('mousedown', handler)
     }
   }, [showAttach])
+
+  useEffect(() => {
+    if (showModelPicker) {
+      const handler = (e: MouseEvent) => {
+        if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) setShowModelPicker(false)
+      }
+      document.addEventListener('mousedown', handler)
+      return () => document.removeEventListener('mousedown', handler)
+    }
+  }, [showModelPicker])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -142,7 +171,7 @@ export default function ChatPage() {
 
     const fullResponse = await streamAiResponse(
       history,
-      undefined,
+      selectedModel,
       (token) => { setStreamContent(prev => prev + token) },
       (error) => {
         setStreamContent(`Error: ${error}`)
@@ -168,6 +197,24 @@ export default function ChatPage() {
   return (
     <div className="flex h-[calc(100vh-7rem)] gap-4">
       <div className="w-64 shrink-0 space-y-2 overflow-y-auto rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+        <div className="relative" ref={modelPickerRef}>
+          <button onClick={() => setShowModelPicker(!showModelPicker)}
+            className="flex items-center gap-1.5 w-full text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-2 py-1.5 mb-2">
+            <span className="truncate flex-1">{MODELS.find(m => m.value === selectedModel)?.label || selectedModel}</span>
+            <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+          </button>
+          {showModelPicker && (
+            <div className="absolute left-0 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
+              {MODELS.map(m => (
+                <button key={m.value}
+                  onClick={() => { setSelectedModel(m.value); localStorage.setItem('ac_default_model', m.value); setShowModelPicker(false) }}
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 ${m.value === selectedModel ? 'bg-blue-50 dark:bg-blue-900/20 font-semibold' : ''}`}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <Button onClick={newConversation} className="w-full justify-start gap-2" variant="secondary" size="sm">
           <Plus className="h-4 w-4" /> New Chat
         </Button>

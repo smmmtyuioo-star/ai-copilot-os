@@ -90,6 +90,8 @@ export async function streamAiResponse(
   onError?: (error: string) => void,
   signal?: AbortSignal,
 ): Promise<string> {
+  const _startTime = Date.now()
+  const _modelToUse = model || 'llama-3.3-70b-versatile'
   try {
     let mcpEndpoints: any[] = []
     if (hasSupabase) {
@@ -108,18 +110,20 @@ export async function streamAiResponse(
     const response = await fetch('/api/ai/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, model: model || 'llama-3.3-70b-versatile', mcpEndpoints, tools }),
+      body: JSON.stringify({ messages, model: _modelToUse, mcpEndpoints, tools }),
       signal: signal || AbortSignal.timeout(60000),
     })
 
     if (!response.ok) {
       const err = await response.json()
       onError?.(err.error || 'Failed to get AI response')
+      _logPromptRecord({ messages, model: _modelToUse, mcpEndpoints, tools, error: err.error, success: false, startTime: _startTime })
       return ''
     }
 
     if (!response.body) {
       onError?.('No response body')
+      _logPromptRecord({ messages, model: _modelToUse, mcpEndpoints, tools, error: 'No response body', success: false, startTime: _startTime })
       return ''
     }
 
@@ -146,9 +150,36 @@ export async function streamAiResponse(
       }
     }
 
+    _logPromptRecord({ messages, model: _modelToUse, mcpEndpoints, tools, responseContent: fullContent, success: true, startTime: _startTime })
     return fullContent
   } catch (err) {
-    onError?.(parseError(err))
+    const errMsg = parseError(err)
+    onError?.(errMsg)
+    _logPromptRecord({ messages, model: _modelToUse, mcpEndpoints: [], tools: [], error: errMsg, success: false, startTime: _startTime })
     return ''
   }
+}
+
+async function _logPromptRecord(opts: {
+  messages: any[]; model: string; mcpEndpoints?: any[]; tools?: string[];
+  responseContent?: string; error?: string; success: boolean; startTime: number
+}) {
+  try {
+    await fetch('/api/prompts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'chat',
+        model: opts.model,
+        messages: opts.messages,
+        mcpEndpoints: opts.mcpEndpoints || [],
+        tools: opts.tools || [],
+        responseContent: opts.responseContent || '',
+        success: opts.success,
+        error: opts.error || '',
+        durationMs: Date.now() - opts.startTime,
+      }),
+      signal: AbortSignal.timeout(2000),
+    })
+  } catch { /* background log — no need to surface */ }
 }

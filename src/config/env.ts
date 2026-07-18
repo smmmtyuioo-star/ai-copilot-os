@@ -13,7 +13,7 @@ export const env = {
     nvidiaKey: process.env.NVIDIA_API_KEY || '',
     googleGeminiKey: process.env.GOOGLE_GEMINI_KEY || '',
     tavilyKey: process.env.TAVILY_API_KEY || '',
-    googleSafeBrowsingKey: process.env.GOOGLE_SAFE_BROWSING_KEY || '',
+    googleSafeBrowsingKey: process.env.GOOGLE_SAFE_BROWSING_API_KEY || '',
     cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN || '',
     cloudflareAccountId: process.env.CLOUDFLARE_ACCOUNT_ID || '',
     cloudflareAccessId: process.env.CLOUDFLARE_ACCESS_ID || '',

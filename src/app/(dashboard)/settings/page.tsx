@@ -8,15 +8,25 @@ import { useAuth } from '@/hooks/useAuth'
 import { updateProfile } from '@/services/auth'
 
 const MODELS = [
-  { provider: 'openai', label: 'OpenAI', models: [
-    { id: 'gpt-4o', name: 'GPT-4o' },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
-  ]},
-  { provider: 'groq', label: 'Groq (Free)', models: [
+  { provider: 'groq', label: 'Groq', models: [
     { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B' },
     { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B' },
-    { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B' },
-    { id: 'gemma2-9b-it', name: 'Gemma 2 9B' },
+  ]},
+  { provider: 'mistral', label: 'Mistral', models: [
+    { id: 'mistral-medium', name: 'Mistral Medium' },
+    { id: 'mistral-small', name: 'Mistral Small' },
+  ]},
+  { provider: 'openrouter', label: 'OpenRouter', models: [
+    { id: 'openai/gpt-4o', name: 'GPT-4o' },
+    { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B' },
+  ]},
+  { provider: 'nvidia', label: 'NVIDIA', models: [
+    { id: 'nvidia/nemotron-3-ultra-550b-a55b', name: 'Nemotron 3 Ultra 550B' },
+    { id: 'deepseek-ai/deepseek-v4-flash', name: 'DeepSeek V4 Flash' },
+  ]},
+  { provider: 'cloudflare', label: 'Cloudflare', models: [
+    { id: '@cf/meta/llama-3.1-8b-instruct-fp8', name: 'Llama 3.1 8B FP8' },
+    { id: '@cf/meta/llama-3.2-3b-instruct', name: 'Llama 3.2 3B' },
   ]},
 ]
 
@@ -125,6 +135,17 @@ export default function SettingsPage() {
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300 capitalize">{mode}</span>
             </label>
           ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>About</CardTitle>
+          <CardDescription>AI Copilot OS • Built by Rishav • Real AI. Real Build. Real Preview.</CardDescription>
+        </CardHeader>
+        <CardContent className="text-xs text-gray-400 space-y-1">
+          <p>A full-stack AI copilot platform with multi-provider chat, agent loop, code execution, image generation, and more.</p>
+          <p className="pt-1">Built with Next.js, Three.js, and a passion for AI tooling.</p>
         </CardContent>
       </Card>
     </div>

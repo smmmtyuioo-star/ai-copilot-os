@@ -50,7 +50,7 @@ const PROVIDER_KEY_MAP: Record<string, string[]> = {
   cloudflare: ["CLOUDFLARE", "cloudflare"],
   mistral: ["MISTRAL", "mistral"],
   openrouter: ["OPENROUTER", "openrouter"],
-  google: ["GOOGLE", "google", "GEMINI"],
+  google: ["GOOGLE", "google", "GEMINI", "GOOGLE_GEMINI"],
   openai: ["OPENAI", "openai"],
   together: ["TOGETHER", "together"],
   nvidia: ["NVIDIA", "nvidia"],
@@ -62,7 +62,7 @@ export function loadKeysFromEnv(): void {
   for (const [providerId, envNames] of Object.entries(PROVIDER_KEY_MAP)) {
     if (!getProvider(providerId)) continue;
     for (const name of envNames) {
-      const candidates = [process.env[`${name}_API_KEY`], process.env[`${name}_KEY`], process.env[`NEXT_PUBLIC_${name}_API_KEY`]];
+      const candidates = [process.env[`${name}_API_KEY`], process.env[`${name}_KEY`], process.env[`${name}_API_TOKEN`]];
       for (const key of candidates) {
         if (key && key.length > 10 && !key.includes("your-") && !key.includes("<")) {
           s.addKey(providerId, key);

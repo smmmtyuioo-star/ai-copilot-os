@@ -1,31 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ok, fail, serverError } from '@/lib/api-utils'
-import { localStore } from '@/lib/storage'
+import { getServerStore } from '@/lib/server-store'
 
 export async function POST(request: NextRequest) {
   try {
-    if (typeof window === 'undefined') {
-      return NextResponse.json({ error: 'This endpoint is client-side only', hint: 'Export is client-side only. Use the browser interface.' }, { status: 501 })
-    }
-    const { type, ids } = await request.json()
+    const { type } = await request.json()
     if (!type) return fail('Export type is required (conversations, memories, agents, settings, all)')
 
+    const store = getServerStore()
     const exportData: Record<string, any> = {}
 
     if (type === 'conversations' || type === 'all') {
-      exportData.conversations = localStore.conversations.items
-      exportData.messages = localStore.messages.items
+      exportData.conversations = store.get('conversations')
+      exportData.messages = store.get('messages')
     }
     if (type === 'memories' || type === 'all') {
-      exportData.memories = localStore.memories.items
+      exportData.memories = store.get('memories')
     }
     if (type === 'agents' || type === 'all') {
-      exportData.agents = localStore.agents.items
-      exportData.apiKeys = localStore.apiKeys.items
+      exportData.agents = store.get('agents')
+      exportData.apiKeys = store.get('apiKeys')
     }
     if (type === 'settings' || type === 'all') {
-      exportData.mcpEndpoints = localStore.mcpEndpoints.items
-      exportData.profile = localStore.profile.items
+      exportData.mcpEndpoints = store.get('mcpEndpoints')
     }
 
     if (Object.keys(exportData).length === 0) return fail('No data found for export')

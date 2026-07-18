@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Brain } from 'lucide-react'
+import { Logo } from '@/components/ui/logo'
 import { Button } from '@/components/ui'
 import { Input } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
@@ -33,7 +33,7 @@ export default function SignupPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <Brain className="mx-auto h-10 w-10 text-blue-600" />
+          <Logo className="mx-auto h-10 w-10" />
           <h1 className="mt-4 text-2xl font-bold text-gray-900 dark:text-gray-100">Create your account</h1>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Start building with AI Copilot OS</p>
         </div>

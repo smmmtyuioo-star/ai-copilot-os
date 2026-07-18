@@ -190,7 +190,7 @@ class TaskQueue {
       models: [
         { provider: 'groq', model: 'llama-3.3-70b-versatile' },
         { provider: 'openrouter', model: 'openai/gpt-4o' },
-        { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
+        { provider: 'mistral', model: 'mistral-medium' },
       ],
     })
   }
@@ -202,9 +202,9 @@ class TaskQueue {
       systemPrompt: 'Generate complete build pipeline with 10 stages',
       taskType: 'coding',
       models: [
-        { provider: 'deepseek', model: 'deepseek-coder' },
-        { provider: 'nvidia', model: 'nvidia/nemotron-3-ultra' },
         { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+        { provider: 'openrouter', model: 'openai/gpt-4o' },
+        { provider: 'mistral', model: 'mistral-medium' },
       ],
     })
   }
@@ -216,7 +216,7 @@ class TaskQueue {
       taskType: 'search',
       models: [
         { provider: 'tavily', model: 'tavily-search' },
-        { provider: 'openrouter', model: 'google/gemini-pro' },
+        { provider: 'groq', model: 'llama-3.3-70b-versatile' },
       ],
     })
   }
@@ -228,7 +228,6 @@ class TaskQueue {
       taskType: 'security',
       models: [
         { provider: 'googleSafeBrowsing', model: 'url-check' },
-        { provider: 'tavily', model: 'tavily-extract' },
       ],
     })
   }
@@ -239,9 +238,8 @@ class TaskQueue {
       prompt: payload.content,
       taskType: 'verification',
       models: [
-        { provider: 'nvidia', model: 'nvidia/nemotron-3-ultra' },
-        { provider: 'deepseek', model: 'deepseek-chat' },
         { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+        { provider: 'openrouter', model: 'openai/gpt-4o' },
       ],
     })
   }
@@ -258,9 +256,9 @@ class TaskQueue {
       systemPrompt: 'Generate production-ready code with tests',
       taskType: 'coding',
       models: [
-        { provider: 'deepseek', model: 'deepseek-coder' },
-        { provider: 'nvidia', model: 'nvidia/nemotron-3-ultra' },
         { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+        { provider: 'openrouter', model: 'openai/gpt-4o' },
+        { provider: 'mistral', model: 'mistral-medium' },
       ],
     })
   }
@@ -272,9 +270,9 @@ class TaskQueue {
       systemPrompt: 'Provide comprehensive analysis with data-driven insights',
       taskType: 'analysis',
       models: [
-        { provider: 'openrouter', model: 'anthropic/claude-3.5-sonnet' },
-        { provider: 'mistral', model: 'mistral-large' },
-        { provider: 'deepseek', model: 'deepseek-chat' },
+        { provider: 'openrouter', model: 'openai/gpt-4o' },
+        { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+        { provider: 'mistral', model: 'mistral-medium' },
       ],
     })
   }

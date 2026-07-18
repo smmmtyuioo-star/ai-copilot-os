@@ -3,45 +3,35 @@ import { env } from '@/config/env'
 const PROVIDERS = {
   groq: {
     baseUrl: 'https://api.groq.com/openai/v1',
-    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
     key: () => env.ai.groqKey,
     strengths: ['speed', 'reasoning', 'coding'],
   },
-  cerebras: {
-    baseUrl: 'https://api.cerebras.ai/v1',
-    models: ['llama-3.3-70b', 'llama-3.1-70b'],
-    key: () => env.ai.cerebrasKey,
-    strengths: ['speed', 'ultra-fast'],
-  },
-  fireworks: {
-    baseUrl: 'https://api.fireworks.ai/inference/v1',
-    models: ['accounts/fireworks/models/llama-v3p3-70b-instruct', 'accounts/fireworks/models/llama-v3p1-70b-instruct'],
-    key: () => env.ai.fireworksKey,
-    strengths: ['speed', 'open-source'],
-  },
-  deepseek: {
-    baseUrl: 'https://api.deepseek.com/v1',
-    models: ['deepseek-chat', 'deepseek-coder'],
-    key: () => env.ai.deepseekKey,
-    strengths: ['coding', 'reasoning', 'math'],
-  },
   mistral: {
     baseUrl: 'https://api.mistral.ai/v1',
-    models: ['mistral-large', 'mistral-medium', 'mistral-small'],
+    models: ['mistral-medium', 'mistral-small'],
     key: () => env.ai.mistralKey,
     strengths: ['reasoning', 'multilingual', 'function-calling'],
   },
   openrouter: {
     baseUrl: 'https://openrouter.ai/api/v1',
-    models: ['openai/gpt-4o', 'anthropic/claude-3.5-sonnet', 'meta-llama/llama-3.3-70b-instruct', 'google/gemini-pro'],
+    models: ['openai/gpt-4o', 'meta-llama/llama-3.3-70b-instruct'],
     key: () => env.ai.openrouterKey,
-    strengths: ['gpt-4o', 'claude', 'variety'],
+    strengths: ['gpt-4o', 'variety'],
   },
   nvidia: {
     baseUrl: 'https://integrate.api.nvidia.com/v1',
-    models: ['nvidia/nemotron-3-ultra', 'nvidia/nemotron-3-8b', 'nvidia/llama-3.1-nemotron-70b-instruct'],
+    models: ['nvidia/nemotron-3-ultra-550b-a55b', 'deepseek-ai/deepseek-v4-flash'],
     key: () => env.ai.nvidiaKey,
-    strengths: ['reasoning', 'coding', 'accuracy', 'nvidia-optimized'],
+    strengths: ['reasoning', 'coding', 'accuracy', 'speed'],
+  },
+  cloudflare: {
+    baseUrl: `https://api.cloudflare.com/client/v4/accounts/${env.ai.cloudflareAccountId}/ai/run`,
+    models: ['@cf/meta/llama-3.1-8b-instruct-fp8-fp8', '@cf/meta/llama-3.2-3b-instruct'],
+    key: () => env.ai.cloudflareApiToken,
+    accountId: env.ai.cloudflareAccountId,
+    useGateway: true,
+    strengths: ['edge', 'free-tier', 'speed'],
   },
   tavily: {
     baseUrl: 'https://api.tavily.com',
@@ -56,15 +46,6 @@ const PROVIDERS = {
     key: () => env.ai.googleSafeBrowsingKey,
     strengths: ['url-safety', 'phishing', 'malware', 'unwanted-software'],
     isSecurity: true,
-  },
-  cloudflare: {
-    baseUrl: `https://api.cloudflare.com/client/v4/accounts/${env.ai.cloudflareAccountId}/ai/run`,
-    models: ['@cf/meta/llama-3.3-70b-instruct', '@cf/meta/llama-3.1-8b-instruct', '@cf/mistral/mistral-7b-instruct-v0.1', '@cf/deepseek/deepseek-r1-distill-qwen-32b'],
-    key: () => env.ai.cloudflareApiToken,
-    accountId: env.ai.cloudflareAccountId,
-    accessId: env.ai.cloudflareAccessId,
-    useGateway: true,
-    strengths: ['edge', 'free-tier', 'privacy'],
   },
 }
 
@@ -102,44 +83,42 @@ export interface ParallelExecutionResult {
 function selectModelsForTask(taskType: string, availableProviders: string[]): { provider: ProviderId; model: string }[] {
   const taskModels: Record<string, { provider: ProviderId; model: string }[]> = {
     coding: [
-      { provider: 'deepseek', model: 'deepseek-coder' },
-      { provider: 'nvidia', model: 'nvidia/nemotron-3-ultra' },
       { provider: 'groq', model: 'llama-3.3-70b-versatile' },
-      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
-      { provider: 'cerebras', model: 'llama-3.3-70b' },
+      { provider: 'openrouter', model: 'openai/gpt-4o' },
+      { provider: 'nvidia', model: 'nvidia/nemotron-3-ultra-550b-a55b' },
+      { provider: 'mistral', model: 'mistral-medium' },
     ],
     reasoning: [
-      { provider: 'nvidia', model: 'nvidia/nemotron-3-ultra' },
-      { provider: 'deepseek', model: 'deepseek-chat' },
       { provider: 'groq', model: 'llama-3.3-70b-versatile' },
-      { provider: 'openrouter', model: 'anthropic/claude-3.5-sonnet' },
-      { provider: 'mistral', model: 'mistral-large' },
+      { provider: 'openrouter', model: 'openai/gpt-4o' },
+      { provider: 'nvidia', model: 'nvidia/nemotron-3-ultra-550b-a55b' },
+      { provider: 'mistral', model: 'mistral-medium' },
     ],
     speed: [
-      { provider: 'cerebras', model: 'llama-3.3-70b' },
       { provider: 'groq', model: 'llama-3.1-8b-instant' },
-      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
-      { provider: 'cloudflare', model: '@cf/meta/llama-3.3-70b-instruct' },
+      { provider: 'cloudflare', model: '@cf/meta/llama-3.1-8b-instruct-fp8' },
+      { provider: 'nvidia', model: 'deepseek-ai/deepseek-v4-flash' },
+      { provider: 'mistral', model: 'mistral-small' },
     ],
     analysis: [
-      { provider: 'openrouter', model: 'anthropic/claude-3.5-sonnet' },
-      { provider: 'mistral', model: 'mistral-large' },
-      { provider: 'deepseek', model: 'deepseek-chat' },
+      { provider: 'openrouter', model: 'openai/gpt-4o' },
       { provider: 'groq', model: 'llama-3.3-70b-versatile' },
+      { provider: 'nvidia', model: 'nvidia/nemotron-3-ultra-550b-a55b' },
+      { provider: 'mistral', model: 'mistral-medium' },
     ],
     search: [
       { provider: 'tavily', model: 'tavily-search' },
-      { provider: 'openrouter', model: 'google/gemini-pro' },
+      { provider: 'groq', model: 'llama-3.3-70b-versatile' },
     ],
     security: [
       { provider: 'googleSafeBrowsing', model: 'url-check' },
-      { provider: 'tavily', model: 'tavily-extract' },
     ],
     general: [
       { provider: 'groq', model: 'llama-3.3-70b-versatile' },
       { provider: 'openrouter', model: 'openai/gpt-4o' },
-      { provider: 'fireworks', model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
-      { provider: 'cloudflare', model: '@cf/meta/llama-3.3-70b-instruct' },
+      { provider: 'nvidia', model: 'deepseek-ai/deepseek-v4-flash' },
+      { provider: 'cloudflare', model: '@cf/meta/llama-3.1-8b-instruct-fp8' },
+      { provider: 'mistral', model: 'mistral-medium' },
     ],
   }
 
@@ -177,11 +156,9 @@ async function callModel(
     headers = { 'Content-Type': 'application/json' }
     body = { client: { clientId: 'ai-copilot-os', clientVersion: '1.0' }, threatInfo: { threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE', 'POTENTIALLY_HARMFUL_APPLICATION'], platformTypes: ['ANY_PLATFORM'], threatEntryTypes: ['URL'], threatEntries: [{ url: messages[messages.length - 1].content }] } }
   } else if (provider === 'cloudflare') {
-    url = `https://api.cloudflare.com/client/v4/accounts/${env.ai.cloudflareAccountId}/ai/run/${encodeURIComponent(model)}`
+    url = `https://api.cloudflare.com/client/v4/accounts/${env.ai.cloudflareAccountId}/ai/run/${model}`
     headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${env.ai.cloudflareApiToken}` }
-  } else if (provider === 'nvidia') {
-    url = 'https://integrate.api.nvidia.com/v1/chat/completions'
-    headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${env.ai.nvidiaKey}` }
+    body = { messages, temperature: 0.7, max_tokens: 4096 }
   }
 
   try {
@@ -223,8 +200,6 @@ async function callModel(
         : '✅ SAFE: No threats detected'
     } else if (provider === 'cloudflare') {
       content = data.result?.response || data.result || JSON.stringify(data)
-    } else if (provider === 'nvidia') {
-      content = data.choices?.[0]?.message?.content || ''
     } else {
       content = data.choices?.[0]?.message?.content || ''
     }
