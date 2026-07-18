@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef, ReactNode } from 'react'
-import { File, Folder, ChevronRight, ChevronDown, Plus, X, Terminal, Code2, FileText, Image, FolderPlus, FilePlus } from 'lucide-react'
+import { File, Folder, ChevronRight, ChevronDown, Plus, X, Terminal, Code2, FileText, Image, FolderPlus, FilePlus, Save, Loader2, AlertCircle } from 'lucide-react'
 
 interface FileNode {
   name: string
@@ -63,6 +63,11 @@ export function EditorShell() {
   ])
   const [terminalInput, setTerminalInput] = useState('')
   const [showTerminal, setShowTerminal] = useState(true)
+  const [loadingFile, setLoadingFile] = useState<string | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
+  const [saving, setSaving] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null)
   const terminalRef = useRef<HTMLDivElement>(null)
 
   const toggleDir = useCallback((path: string) => {
@@ -74,7 +79,7 @@ export function EditorShell() {
     })
   }, [])
 
-  const openFile = useCallback((node: FileNode) => {
+  const openFile = useCallback(async (node: FileNode) => {
     if (node.type === 'directory') { toggleDir(node.path); return }
     const existing = tabs.find(t => t.path === node.path)
     if (existing) { setActiveTab(existing.id); return }
@@ -88,6 +93,27 @@ export function EditorShell() {
     }
     setTabs(prev => [...prev, newTab])
     setActiveTab(newTab.id)
+    setLoadingFile(node.path)
+    setFileError(null)
+    try {
+      const res = await fetch('/api/files/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: node.path }),
+        signal: AbortSignal.timeout(10000),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      if (data.success && typeof data.content === 'string') {
+        setTabs(prev => prev.map(t => t.path === node.path ? { ...t, content: data.content } : t))
+      } else {
+        throw new Error(data.error || 'Failed to read file')
+      }
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : 'Failed to load file')
+    } finally {
+      setLoadingFile(null)
+    }
   }, [tabs, toggleDir])
 
   const closeTab = useCallback((id: string) => {
@@ -101,6 +127,34 @@ export function EditorShell() {
       return next
     })
   }, [activeTab])
+
+  const saveCurrentFile = useCallback(async () => {
+    const tab = tabs.find(t => t.id === activeTab)
+    if (!tab || !tab.modified) return
+    setSaving(tab.id)
+    setSaveError(null)
+    setSaveSuccess(null)
+    try {
+      const res = await fetch('/api/files/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: tab.path, content: tab.content }),
+        signal: AbortSignal.timeout(10000),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, modified: false } : t))
+        setSaveSuccess('Saved')
+        setTimeout(() => setSaveSuccess(null), 2000)
+      } else {
+        throw new Error(data.error || 'Save failed')
+      }
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save file')
+    } finally {
+      setSaving(null)
+    }
+  }, [tabs, activeTab])
 
   const runTerminalCommand = useCallback(async () => {
     const cmd = terminalInput.trim()
@@ -231,6 +285,19 @@ export function EditorShell() {
                 <FileText className="h-4 w-4" />
                 <span>Editing: {tabs.find(t => t.id === activeTab)?.path}</span>
                 <span className="rounded bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-800">{tabs.find(t => t.id === activeTab)?.language}</span>
+                <div className="ml-auto flex items-center gap-2">
+                  {loadingFile && <span className="flex items-center gap-1 text-xs text-blue-500"><Loader2 className="h-3 w-3 animate-spin" /> Loading...</span>}
+                  {fileError && <span className="flex items-center gap-1 text-xs text-red-500"><AlertCircle className="h-3 w-3" /> {fileError}</span>}
+                  {saveError && <span className="flex items-center gap-1 text-xs text-red-500"><AlertCircle className="h-3 w-3" /> {saveError}</span>}
+                  {saveSuccess && <span className="text-xs text-green-500">{saveSuccess}</span>}
+                  {tabs.find(t => t.id === activeTab)?.modified && (
+                    <button onClick={saveCurrentFile} disabled={!!saving}
+                      className="flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 disabled:opacity-50">
+                      {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                      Save
+                    </button>
+                  )}
+                </div>
               </div>
               <textarea
                 className="mt-2 w-full flex-1 resize-none rounded border border-gray-200 p-3 font-mono text-sm dark:border-gray-700 dark:bg-gray-800"

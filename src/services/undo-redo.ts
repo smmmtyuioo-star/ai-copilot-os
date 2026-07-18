@@ -25,7 +25,11 @@ export function loadHistory() {
 
 function saveHistory() {
   if (typeof window === 'undefined') return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(undoStack.slice(-MAX_STACK)))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(undoStack.slice(-MAX_STACK)))
+  } catch (e) {
+    console.error('[undo-redo] Failed to save history:', e)
+  }
 }
 
 export function pushUndo(entry: UndoEntry) {

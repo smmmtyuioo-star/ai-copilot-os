@@ -117,7 +117,8 @@ export default function HomePage() {
   const filteredConvs = conversations.filter(c => !searchConv || c.title.toLowerCase().includes(searchConv.toLowerCase()))
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const { isOffline } = useOffline()
+  const regeneratingRef = useRef(false)
+  const { isOffline, queueMessage } = useOffline()
   const [recoveredStream, setRecoveredStream] = useState<{ partialContent: string; convId: string; model: string; userMessage: string } | null>(null)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
 
@@ -142,11 +143,19 @@ export default function HomePage() {
       const savedModel = localStorage.getItem('ac_default_model')
       if (savedModel) setSelectedModel(savedModel)
     }
-    loadConversations().then(() => {
-      const savedConv = localStorage.getItem('ac_active_conv')
-      if (savedConv) {
-        setActiveConv(savedConv)
-        db.getMessages(savedConv).then(msgs => setMessages(msgs)).catch(() => {})
+    loadConversations().then(convs => {
+      // Prefer URL param over localStorage, but validate it exists
+      const params = new URLSearchParams(window.location.search)
+      const urlConv = params.get('conversation')
+      const savedConv = (urlConv && convs.some((c: any) => c.id === urlConv))
+        ? urlConv
+        : localStorage.getItem('ac_active_conv')
+      const validConv = savedConv && convs.some((c: any) => c.id === savedConv) ? savedConv : null
+      if (validConv) {
+        setActiveConv(validConv)
+        db.getMessages(validConv).then(msgs => setMessages(msgs)).catch(() => {})
+      } else if (savedConv) {
+        localStorage.removeItem('ac_active_conv')
       }
       const session = loadStreamSession()
       if (session && session.status === 'streaming') {
@@ -230,10 +239,13 @@ export default function HomePage() {
     try {
       const convs = await db.getConversations()
       setConversations(convs)
+      setConvLoading(false)
+      return convs
     } catch (err) {
       console.error('Failed to load conversations:', err)
+      setConvLoading(false)
+      return []
     }
-    setConvLoading(false)
   }
 
   async function newConversation() {
@@ -246,12 +258,14 @@ export default function HomePage() {
     setConversations(prev => [conv, ...prev])
     setActiveConv(conv.id)
     localStorage.setItem('ac_active_conv', conv.id)
+    window.history.replaceState(null, '', `?conversation=${conv.id}`)
     setMessages([])
   }
 
   async function selectConversation(id: string) {
     setActiveConv(id)
     localStorage.setItem('ac_active_conv', id)
+    window.history.replaceState(null, '', `?conversation=${id}`)
     const msgs = await db.getMessages(id)
     setMessages(msgs)
     setSidebar(false)
@@ -274,7 +288,11 @@ export default function HomePage() {
   async function handleDelete(id: string) {
     await db.deleteConversation(id)
     setConversations(prev => prev.filter(c => c.id !== id))
-    if (activeConv === id) { setActiveConv(null); setMessages([]) }
+    if (activeConv === id) {
+      setActiveConv(null); setMessages([])
+      localStorage.removeItem('ac_active_conv')
+      window.history.replaceState(null, '', '/')
+    }
   }
 
   async function executeAutoAgent(userMessage: string): Promise<string | null> {
@@ -415,11 +433,20 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
   }
 
   async function handleRegenerate(msgId: string) {
+    if (regeneratingRef.current) return
     const idx = messages.findIndex(m => m.id === msgId)
     if (idx < 1) return
     const prevMsgs = messages.slice(0, idx)
     const convId = activeConv
     if (!convId) return
+
+    regeneratingRef.current = true
+
+    // Abort any prior in-flight request
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
 
     setStreaming(true)
     setStreamContent('')
@@ -427,10 +454,10 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     abortRef.current = abortController
     const history = prevMsgs.map(m => ({ role: m.role, content: m.content }))
 
-    // Remove stale messages from DB
+    // Remove stale messages from DB (superseded responses)
     const toRemove = messages.slice(idx)
     for (const m of toRemove) {
-      await db.deleteMessage(m.id)
+      try { await db.deleteMessage(m.id) } catch {}
     }
 
     let fullResponse: string | null = null
@@ -442,13 +469,17 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
         abortController.signal,
       )
     } catch (err) {
+      if ((err as any)?.name === 'AbortError') {
+        regeneratingRef.current = false
+        return
+      }
       const errorMsg: Message = {
         id: generateId(), conversation_id: convId, role: 'assistant',
         content: `Error: ${err instanceof Error ? err.message : 'Generation failed'}`,
         created_at: new Date().toISOString(),
       }
       setMessages(prev => [...prev.slice(0, idx), errorMsg])
-      await db.addMessage(errorMsg).catch(() => {})
+      try { await db.addMessage(errorMsg) } catch {}
       fullResponse = null
     }
     if (abortRef.current === abortController) abortRef.current = null
@@ -458,10 +489,11 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
         content: fullResponse, created_at: new Date().toISOString(),
       }
       setMessages(prev => [...prev.slice(0, idx), newMsg])
-      await db.addMessage(newMsg)
+      try { await db.addMessage(newMsg) } catch {}
     }
     setStreaming(false)
     setStreamContent('')
+    regeneratingRef.current = false
   }
 
   function startEdit(msgId: string, content: string) {
@@ -558,7 +590,12 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
   }
 
   async function handleSend() {
-    if (!input.trim() || streaming || isOffline) return
+    if (!input.trim() || streaming) return
+    if (isOffline) {
+      queueMessage(input.trim())
+      setInput('')
+      return
+    }
     clearStreamSession()
     setRecoveredStream(null)
     const perm = checkPermission('send message')
@@ -671,6 +708,50 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
     setWorkflow({ ...wf })
 
     const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
+
+    // Auto-inject plugins: merge enabled auto-inject plugin prompts into context
+    const autoInjectPlugins = (() => {
+      try {
+        const userData = JSON.parse(localStorage.getItem('ac_user') || '{}')
+        const uid = userData?.id || ''
+        const key = uid ? `ac_plugins_${uid}` : 'ac_plugins'
+        const raw: any[] = JSON.parse(localStorage.getItem(key) || '[]')
+        return (Array.isArray(raw) ? raw : [])
+          .filter((s: any) => (typeof s === 'object' ? s.autoInject : false))
+          .map((s: any) => (typeof s === 'object' ? s.id : s))
+      } catch { return [] }
+    })()
+    if (autoInjectPlugins.length > 0) {
+      const PLUGIN_ACTIONS: Record<string, { systemPrompt: string }> = {
+        'code-analyzer': { systemPrompt: 'Analyze this code for: 1) Bugs and errors 2) Security vulnerabilities 3) Performance issues 4) Best practices violations 5) Suggestions for improvement. Format with bullet points.' },
+        'data-exporter': { systemPrompt: 'You are a data exporter. Generate a formatted JSON/CSV export of the requested data type.' },
+        'translator': { systemPrompt: 'Translate the given text to the requested language. Preserve formatting and tone.' },
+        'web-scraper': { systemPrompt: 'You are a web scraping assistant. Given a URL, describe what content you would extract from it.' },
+        'api-tester': { systemPrompt: 'You are an API testing assistant. Given an HTTP request, simulate what the response would look like.' },
+        'note-taker': { systemPrompt: 'Save this note and format it nicely. Include a title, date, and tags based on the content.' },
+        'pdf-generator': { systemPrompt: 'Generate a well-structured document in Markdown format based on the description.' },
+        'image-analyzer': { systemPrompt: 'Describe this image in vivid detail. Include: composition, colors, lighting, objects, atmosphere.' },
+        'summarizer': { systemPrompt: 'Summarize the given text into: 1) One-sentence summary 2) Key points 3) Main takeaway.' },
+        'regex-tester': { systemPrompt: 'Generate a regular expression for the described pattern. Explain how it works.' },
+      }
+      const injectedPrompts = autoInjectPlugins
+        .map((id: string) => PLUGIN_ACTIONS[id]?.systemPrompt)
+        .filter(Boolean)
+      if (injectedPrompts.length > 0) {
+        // Check for dedup: don't inject if user's message already contains similar instructions
+        const userLower = sentInput.toLowerCase()
+        const deduped = injectedPrompts.filter((p: string) => {
+          const snippet = p.split('.')[0].toLowerCase()
+          return !userLower.includes(snippet.slice(0, 30))
+        })
+        if (deduped.length > 0) {
+          history.unshift({
+            role: 'system',
+            content: `[Auto-injected plugins]\n${deduped.join('\n\n')}`,
+          })
+        }
+      }
+    }
 
     // If user message contains a URL, fetch its content and inject it into AI context
     const urlMatch = sentInput.match(URL_REGEX)

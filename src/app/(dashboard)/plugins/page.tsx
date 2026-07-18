@@ -15,6 +15,7 @@ interface Plugin {
   installed: boolean
   icon: string
   category: string
+  autoInject?: boolean
 }
 
 interface PluginAction {
@@ -64,25 +65,38 @@ export default function PluginsPage() {
   }
 
   useEffect(() => {
-    const installed = JSON.parse(localStorage.getItem(pluginStorageKey()) || '[]')
-    setPlugins(AVAILABLE_PLUGINS.map(p => ({ ...p, installed: installed.includes(p.id) })))
+    const raw = JSON.parse(localStorage.getItem(pluginStorageKey()) || '[]')
+    const installed = new Map<string, StoredPlugin>(
+      (Array.isArray(raw) ? raw : []).map((s: any) => [typeof s === 'string' ? s : s.id, typeof s === 'string' ? { id: s, autoInject: false } : s])
+    )
+    setPlugins(AVAILABLE_PLUGINS.map(p => {
+      const stored = installed.get(p.id)
+      return { ...p, installed: !!stored, autoInject: stored?.autoInject || false }
+    }))
   }, [user])
+
+  interface StoredPlugin { id: string; autoInject: boolean }
 
   function saveState(list: Plugin[]) {
     setPlugins(list)
-    localStorage.setItem(pluginStorageKey(), JSON.stringify(list.filter(p => p.installed).map(p => p.id)))
+    const stored: StoredPlugin[] = list.filter(p => p.installed).map(p => ({ id: p.id, autoInject: p.autoInject || false }))
+    localStorage.setItem(pluginStorageKey(), JSON.stringify(stored))
   }
 
   function enable(id: string) {
-    saveState(plugins.map(p => p.id === id ? { ...p, installed: true } : p))
+    saveState(plugins.map(p => p.id === id ? { ...p, installed: true, autoInject: false } : p))
     const plugin = plugins.find(p => p.id === id)
     setMessage({ type: 'success', text: `"${plugin?.name}" enabled — click Use to run it` })
     setTimeout(() => setMessage(null), 3000)
   }
 
   function disable(id: string) {
-    saveState(plugins.map(p => p.id === id ? { ...p, installed: false } : p))
+    saveState(plugins.map(p => p.id === id ? { ...p, installed: false, autoInject: false } : p))
     if (action?.plugin.id === id) setAction(null)
+  }
+
+  function toggleAutoInject(id: string) {
+    saveState(plugins.map(p => p.id === id ? { ...p, autoInject: !p.autoInject } : p))
   }
 
   async function executeAction() {
@@ -217,6 +231,10 @@ export default function PluginsPage() {
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => setAction({ plugin, loading: false, input: '', output: '', error: '' })}>
                       <Play className="h-4 w-4" /> Use
+                    </Button>
+                    <Button size="sm" variant={plugin.autoInject ? 'primary' : 'secondary'} onClick={() => toggleAutoInject(plugin.id)}
+                      title={plugin.autoInject ? 'Auto-inject into chat' : 'Click to auto-inject'}>
+                      <span className={`h-3 w-3 rounded-full ${plugin.autoInject ? 'bg-green-500' : 'bg-gray-300'}`} /> Auto
                     </Button>
                     <Button size="sm" variant="danger" onClick={() => disable(plugin.id)}>
                       <Trash2 className="h-4 w-4" /> Disable

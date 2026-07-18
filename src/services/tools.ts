@@ -433,12 +433,12 @@ const TOOL_HANDLERS: Record<string, ToolHandler> = {
     if (!query) return 'Error: query is required'
 
     try {
-      const { searchMemory } = await import('@/services/memory')
+      const { searchMemories } = await import('@/services/memory')
       const type = args.type as 'short-term' | 'long-term' | undefined
-      const results = await searchMemory(context.userId, query, type)
+      const results = searchMemories(context.userId, query)
       if (results.length === 0) return 'No memories found matching that query.'
       return results.map((m, i) =>
-        `[${i + 1}] (${m.type}) ${m.content}\n   ${new Date(m.created_at).toLocaleDateString()}`
+        `[${i + 1}] (${m.type}) ${m.content}\n   ${new Date(m.createdAt).toLocaleDateString()}`
       ).join('\n\n')
     } catch (err) {
       return `Memory search error: ${err instanceof Error ? err.message : 'Unknown error'}`

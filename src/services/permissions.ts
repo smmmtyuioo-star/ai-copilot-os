@@ -23,10 +23,14 @@ export function loadPermissions() {
 
 export function savePermissions() {
   if (typeof window === 'undefined') return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    mode,
-    rules: rules.map(r => ({ ...r, pattern: r.pattern.source })),
-  }))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      mode,
+      rules: rules.map(r => ({ ...r, pattern: r.pattern.source })),
+    }))
+  } catch (e) {
+    console.error('[permissions] Failed to save:', e)
+  }
 }
 
 export function getMode(): PermissionMode { return mode }

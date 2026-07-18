@@ -49,7 +49,11 @@ class SkillRegistry {
 
   private persist(): void {
     if (typeof window === 'undefined') return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.skills))
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.skills))
+    } catch (e) {
+      console.error('[skill-registry] Failed to persist:', e)
+    }
     this.notify()
   }
 

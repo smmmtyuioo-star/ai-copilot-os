@@ -15,7 +15,8 @@ export const db = {
         model: c.model || 'llama-3.3-70b-versatile',
         created_at: c.createdAt, updated_at: c.createdAt,
       }))
-      const { data } = await supabase.from('conversations').select('*').eq('user_id', userId).order('updated_at', { ascending: false })
+      const { data, error } = await supabase.from('conversations').select('*').eq('user_id', userId).order('updated_at', { ascending: false })
+      if (error) throw error
       return data || []
     }
     return localStore.conversations.items.map(c => ({
@@ -31,7 +32,7 @@ export const db = {
   async addConversation(conv: Conversation): Promise<void> {
     if (hasSupabase) {
       const supabase = getSupabase()
-      if (supabase) { await supabase.from('conversations').insert(conv); return }
+      if (supabase) { const { error } = await supabase.from('conversations').insert(conv); if (error) throw error; return }
     }
     localStore.conversations.add({ id: conv.id, title: conv.title, model: conv.model, createdAt: conv.created_at })
   },
@@ -39,7 +40,7 @@ export const db = {
   async updateConversation(id: string, updates: Partial<{ title: string; model: string }>): Promise<void> {
     if (hasSupabase) {
       const supabase = getSupabase()
-      if (supabase) { await supabase.from('conversations').update(updates).eq('id', id); return }
+      if (supabase) { const { error } = await supabase.from('conversations').update(updates).eq('id', id); if (error) throw error; return }
     }
     localStore.conversations.update(id, updates)
   },
@@ -47,7 +48,7 @@ export const db = {
   async deleteConversation(id: string): Promise<void> {
     if (hasSupabase) {
       const supabase = getSupabase()
-      if (supabase) { await supabase.from('conversations').delete().eq('id', id); return }
+      if (supabase) { const { error } = await supabase.from('conversations').delete().eq('id', id); if (error) throw error; return }
     }
     localStore.conversations.remove(id)
   },
@@ -58,7 +59,8 @@ export const db = {
       if (!supabase) return localStore.messages.items
         .filter(m => m.conversationId === conversationId)
         .map(m => ({ id: m.id, conversation_id: m.conversationId, role: m.role as Message['role'], content: m.content, created_at: m.createdAt }))
-      const { data } = await supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true })
+      const { data, error } = await supabase.from('messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true })
+      if (error) throw error
       return data || []
     }
     return localStore.messages.items
@@ -69,7 +71,7 @@ export const db = {
   async deleteMessage(id: string): Promise<void> {
     if (hasSupabase) {
       const supabase = getSupabase()
-      if (supabase) { await supabase.from('messages').delete().eq('id', id); return }
+      if (supabase) { const { error } = await supabase.from('messages').delete().eq('id', id); if (error) throw error; return }
     }
     localStore.messages.remove(id)
   },
@@ -77,7 +79,7 @@ export const db = {
   async addMessage(msg: Message): Promise<void> {
     if (hasSupabase) {
       const supabase = getSupabase()
-      if (supabase) { await supabase.from('messages').insert(msg); return }
+      if (supabase) { const { error } = await supabase.from('messages').insert(msg); if (error) throw error; return }
     }
     localStore.messages.add({
       id: msg.id, conversationId: msg.conversation_id,
@@ -88,7 +90,11 @@ export const db = {
   async getAgents(): Promise<Agent[]> {
     if (hasSupabase) {
       const supabase = getSupabase()
-      if (supabase) { const { data } = await supabase.from('agents').select('*'); return data || [] }
+      if (supabase) {
+        const { data, error } = await supabase.from('agents').select('*')
+        if (error) throw error
+        return data || []
+      }
     }
     return localStore.agents.items.map(a => ({
       id: a.id, user_id: 'local', name: a.name, role: a.role as Agent['role'],
@@ -100,7 +106,8 @@ export const db = {
   async addMemory(entry: MemoryEntry): Promise<void> {
     if (hasSupabase && getSupabase()) {
       const supabase = getSupabase()!
-      await supabase.from('memory').insert(entry)
+      const { error } = await supabase.from('memory').insert(entry)
+      if (error) throw error
       return
     }
     localStore.memories.add({ id: entry.id, content: entry.content, type: entry.type, createdAt: entry.created_at })
@@ -109,7 +116,11 @@ export const db = {
   async getMemories(): Promise<MemoryEntry[]> {
     if (hasSupabase) {
       const supabase = getSupabase()
-      if (supabase) { const { data } = await supabase.from('memory').select('*').order('created_at', { ascending: false }); return data || [] }
+      if (supabase) {
+        const { data, error } = await supabase.from('memory').select('*').order('created_at', { ascending: false })
+        if (error) throw error
+        return data || []
+      }
     }
     return localStore.memories.items.map(m => ({
       id: m.id, user_id: 'local', type: m.type as 'short-term' | 'long-term',

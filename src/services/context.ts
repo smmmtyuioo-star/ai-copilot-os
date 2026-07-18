@@ -1,4 +1,4 @@
-import { searchMemory } from '@/services/memory'
+import { searchMemories } from '@/services/memory'
 
 function estimateTokens(text: string): number {
   if (!text) return 0
@@ -123,7 +123,7 @@ export async function prepareContext(
   let memoryContext = ''
   if (memoryQuery && userId) {
     try {
-      const memories = await searchMemory(userId, memoryQuery)
+      const memories = searchMemories(userId, memoryQuery)
       const relevant = memories.slice(0, maxMemories)
       if (relevant.length > 0) {
         memoryContext = 'Relevant context from past conversations:\n' +
