@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Download, Trash2, CheckCircle2, AlertCircle, Play, Copy, Search } from 'lucide-react'
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Badge, Modal } from '@/components/ui'
 import { generateId } from '@/lib/utils'
@@ -54,7 +54,22 @@ const PLUGIN_ACTIONS: Record<string, { label: string; inputLabel: string; inputP
 
 export default function PluginsPage() {
   const { user } = useAuth()
-  const [plugins, setPlugins] = useState<Plugin[]>([])
+  const [plugins, setPlugins] = useState<Plugin[]>(() => {
+    const key = user ? `ac_plugins_${user.id}` : 'ac_plugins'
+    try {
+      const raw = JSON.parse(localStorage.getItem(key) || '[]')
+      const installed = new Map<string, StoredPlugin>(
+        (Array.isArray(raw) ? raw : []).map((s: any) => [typeof s === 'string' ? s : s.id, typeof s === 'string' ? { id: s, autoInject: false } : s])
+      )
+      return AVAILABLE_PLUGINS.map(p => {
+        const stored = installed.get(p.id)
+        return { ...p, installed: !!stored, autoInject: stored?.autoInject || false }
+      })
+    } catch {
+      return AVAILABLE_PLUGINS.map(p => ({ ...p, installed: false, autoInject: false }))
+    }
+  })
+  const initialized = useRef(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [action, setAction] = useState<PluginAction | null>(null)
   const [filter, setFilter] = useState('all')
@@ -65,14 +80,18 @@ export default function PluginsPage() {
   }
 
   useEffect(() => {
-    const raw = JSON.parse(localStorage.getItem(pluginStorageKey()) || '[]')
-    const installed = new Map<string, StoredPlugin>(
-      (Array.isArray(raw) ? raw : []).map((s: any) => [typeof s === 'string' ? s : s.id, typeof s === 'string' ? { id: s, autoInject: false } : s])
-    )
-    setPlugins(AVAILABLE_PLUGINS.map(p => {
-      const stored = installed.get(p.id)
-      return { ...p, installed: !!stored, autoInject: stored?.autoInject || false }
-    }))
+    if (!initialized.current) { initialized.current = true; return }
+    const key = user ? `ac_plugins_${user.id}` : 'ac_plugins'
+    try {
+      const raw = JSON.parse(localStorage.getItem(key) || '[]')
+      const installed = new Map<string, StoredPlugin>(
+        (Array.isArray(raw) ? raw : []).map((s: any) => [typeof s === 'string' ? s : s.id, typeof s === 'string' ? { id: s, autoInject: false } : s])
+      )
+      setPlugins(AVAILABLE_PLUGINS.map(p => {
+        const stored = installed.get(p.id)
+        return { ...p, installed: !!stored, autoInject: stored?.autoInject || false }
+      }))
+    } catch { /* silent */ }
   }, [user])
 
   interface StoredPlugin { id: string; autoInject: boolean }
@@ -133,7 +152,8 @@ export default function PluginsPage() {
         }
       }
     } else {
-      setAction(prev => prev ? { ...prev, error: 'Plugin execution failed. Check your API key.', loading: false } : prev)
+      const err = await response.json().catch(() => ({ error: 'Unknown error' }))
+      setAction(prev => prev ? { ...prev, error: `Plugin failed: ${err.error || 'API error'}. Check your API key or try again.`, loading: false } : prev)
     }
   }
 

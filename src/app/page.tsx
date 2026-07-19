@@ -25,14 +25,14 @@ const LoadingMesh = dynamic(() => import('@/components/shared/loading-mesh'), { 
 const URL_REGEX = /https?:\/\/[^\s]+/g
 const BUILD_COMMAND = /^\/build\s+(.+)$/i
 const GAME_TRIGGERS = [
-  /^(?:build|make|create)\s+(?:a\s+)?(?:game|arcade|video\s*game)/i,
-  /^(?:build|make|create)\s+(?:a\s+)?(?:snake|tetris|pong|platformer|shooter|puzzle|rpg|clicker|runner)/i,
-  /(?:build|make|create)\s+(?:a\s+)?(?:game|video\s*game)\s+(?:called|named)?\s*["']?([^"']+)/i,
+  /^(?:build|make|create)\s+(?:a\s+)?(?:\S+\s+)*(?:game|arcade|video\s*game)/i,
+  /^(?:build|make|create)\s+(?:a\s+)?(?:\S+\s+)*(?:snake|tetris|pong|platformer|shooter|puzzle|rpg|clicker|runner)/i,
+  /(?:build|make|create)\s+(?:a\s+)?(?:\S+\s+)*(?:game|video\s*game)\s+(?:called|named)?\s*["']?([^"']+)/i,
 ]
 const WEBSITE_TRIGGERS = [
-  /^(?:build|make|create|generate)\s+(?:a\s+)?(?:website|site|web\s*page|landing\s*page|landing)/i,
-  /^(?:build|make|create|generate)\s+(?:a\s+)?(?:portfolio|blog|business\s*site|ecommerce|store)/i,
-  /^(?:build|make|create)\s+(?:a\s+)?(?:site|website)\s+(?:for|called|named)?\s*["']?([^"']+)/i,
+  /^(?:build|make|create|generate)\s+(?:a\s+)?(?:\S+\s+)*(?:website|site|web\s*page|landing\s*page|landing)/i,
+  /^(?:build|make|create|generate)\s+(?:a\s+)?(?:\S+\s+)*(?:portfolio|blog|business\s*site|ecommerce|store)/i,
+  /^(?:build|make|create)\s+(?:a\s+)?(?:\S+\s+)*(?:site|website)\s+(?:for|called|named)?\s*["']?([^"']+)/i,
 ]
 
 const CONNECTOR_COMMANDS: Record<string, { pattern: RegExp; action: string; extract: (match: RegExpMatchArray) => any }> = {
@@ -1211,7 +1211,7 @@ async function handleBuildCommand(userMessage: string): Promise<string | null> {
                   <div>
                     <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Stream disconnected</p>
                     <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
-                      A previous streaming session was interrupted. "{recoveredStream.userMessage}"
+                      A previous streaming session was interrupted. &quot;{recoveredStream.userMessage}&quot;
                       — partial response ({recoveredStream.partialContent.length} chars) was not saved.
                     </p>
                   </div>

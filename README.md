@@ -28,7 +28,7 @@ Built entirely with TypeScript on Next.js, it runs in your browser with your own
 | **Multi-Provider AI** | 5 providers — **Groq**, **Mistral**, **OpenRouter**, **NVIDIA**, **Cloudflare** — 10 total models. Automatic fallback on failure. Tier-based routing (fast / balanced / thorough) by task intent. |
 | **Agent Loop** | Multi-turn tool-using agent with web search, URL fetching, GitHub API, code execution, memory search, and URL safety checking. Fallback chain across all providers. |
 | **Code Execution** | JavaScript sandbox with security inspection, output truncation, timeout controls, and blocked-command detection. |
-| **Website Builder** | Generates production-quality single-file websites (HTML/CSS/JS) from a natural language description. |
+| **Website Builder** | Generates production-quality single-file websites (HTML/CSS/JS) from a natural language description. Supports 3D/Three.js for immersive product showcases. |
 | **Image Studio** | Generates and edits visual designs as HTML/SVG through the agent loop. |
 | **Game Builder** | Generates playable HTML/JS games from a description. |
 | **Web Search** | Real-time web search via Tavily API with configurable depth, result count, and answer extraction. |
